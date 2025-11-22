@@ -29,51 +29,48 @@ temp_a = st.sidebar.slider("Agent A Temperature", 0.0, 2.0, 1.0, 0.1)
 temp_b = st.sidebar.slider("Agent B Temperature", 0.0, 2.0, 1.0, 0.1)
 max_tokens = st.sidebar.number_input("Max Tokens", 50, 4096, 1000)
 
-# --- Main Page: Agent & Interaction Setup ---
-st.markdown("### 🎭 Agent & Interaction Setup")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("#### Agent A")
-    model_a_slug = st.text_input("Model A Slug", "x-ai/grok-beta", key="model_a")
-    persona_a = st.text_area("Persona / Character", "Julius Caesar", height=100, 
-                             help="Describe the character, style, or historical figure.")
-
-with col2:
-    st.markdown("#### Agent B")
-    model_b_slug = st.text_input("Model B Slug", "meta-llama/llama-3-70b-instruct", key="model_b")
-    persona_b = st.text_area("Persona / Character", "A modern data scientist", height=100,
-                             help="Describe the character, style, or historical figure.")
-
+# --- Tabs: Main Structure ---
 st.markdown("---")
-st.markdown("#### 🌍 Interaction Context")
+tab1, tab2, tab3 = st.tabs(["🎭 Agent & Interaction Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
 
-context_col1, context_col2 = st.columns(2)
-
-with context_col1:
-    interaction_setting = st.selectbox("Setting / Tone", ["Professional", "Intimate", "Casual", "Debate"])
-
-with context_col2:
-    # Conversation Starter
-    starter_mode = st.radio("Starter Mode", ["Preset", "Custom"], horizontal=True)
-    PRESET_STARTERS = [
-        "Hello.",
-        "Greetings.",
-        "We need to talk.",
-        "What is your opinion on the current state of affairs?",
-        "I have a confession to make."
-    ]
-    if starter_mode == "Preset":
-        initial_message = st.selectbox("Initial Message", PRESET_STARTERS, label_visibility="collapsed")
-    else:
-        initial_message = st.text_input("Custom Initial Message", "Hello.", label_visibility="collapsed")
-
-# --- Tabs: Simulation & Analysis ---
-st.markdown("---")
-tab1, tab2, tab3 = st.tabs(["🚀 Live Simulation", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
-
+# --- Tab 1: Setup & Simulation ---
 with tab1:
+    st.markdown("### Configure Agents & Context")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Agent A")
+        model_a_slug = st.text_input("Model A Slug", "x-ai/grok-beta", key="model_a")
+        persona_a = st.text_area("Persona / Character", "Julius Caesar", height=100, 
+                                 help="Describe the character, style, or historical figure.")
+
+    with col2:
+        st.markdown("#### Agent B")
+        model_b_slug = st.text_input("Model B Slug", "meta-llama/llama-3-70b-instruct", key="model_b")
+        persona_b = st.text_area("Persona / Character", "A modern data scientist", height=100,
+                                 help="Describe the character, style, or historical figure.")
+
+    st.markdown("#### 🌍 Interaction Context")
+    context_col1, context_col2 = st.columns(2)
+    with context_col1:
+        interaction_setting = st.selectbox("Setting / Tone", ["Professional", "Intimate", "Casual", "Debate"])
+
+    with context_col2:
+        starter_mode = st.radio("Starter Mode", ["Preset", "Custom"], horizontal=True)
+        PRESET_STARTERS = [
+            "Hello.",
+            "Greetings.",
+            "We need to talk.",
+            "What is your opinion on the current state of affairs?",
+            "I have a confession to make."
+        ]
+        if starter_mode == "Preset":
+            initial_message = st.selectbox("Initial Message", PRESET_STARTERS, label_visibility="collapsed")
+        else:
+            initial_message = st.text_input("Custom Initial Message", "Hello.", label_visibility="collapsed")
+
+    st.markdown("---")
+    
     if st.button("Start Simulation", type="primary", use_container_width=True):
         st.write("### 🟢 Live Conversation")
         
@@ -81,7 +78,7 @@ with tab1:
         system_prompt_a = construct_system_prompt(interaction_setting, persona_a)
         system_prompt_b = construct_system_prompt(interaction_setting, persona_b)
         
-        # Display the generated prompts for transparency (optional, in expander)
+        # Display the generated prompts for transparency
         with st.expander("View Generated System Prompts"):
             st.markdown(f"**Agent A Prompt:**\n{system_prompt_a}")
             st.markdown(f"**Agent B Prompt:**\n{system_prompt_b}")
@@ -123,14 +120,11 @@ with tab1:
                 # Display Message
                 with chat_container:
                     with st.chat_message(log_entry["speaker_model"], avatar="A" if "Agent A" in log_entry["speaker_model"] or log_entry["speaker_model"] == model_a_slug else "B"):
-                        # Try to show Persona Name if available, else Model
                         speaker_label = persona_a if log_entry["speaker_model"] == model_a_slug else persona_b
                         if len(speaker_label) > 20: speaker_label = speaker_label[:20] + "..."
-                        
                         st.markdown(f"**{speaker_label}** ({log_entry['speaker_model']})")
                         st.write(log_entry["content"])
                 
-                # Small delay for visual pacing
                 time.sleep(0.1)
                 
         # Save logs
@@ -138,6 +132,7 @@ with tab1:
         orchestrator.save_logs(jsonl_path)
         st.success("Simulation Finished & Saved!")
 
+# --- Tab 2: Basic Analysis ---
 with tab2:
     st.header("Basic Data Analysis")
     if st.button("Refresh Data", key="refresh_basic"):
@@ -161,6 +156,7 @@ with tab2:
     else:
         st.info("No data found.")
 
+# --- Tab 3: Stylometric Analysis ---
 with tab3:
     st.header("🧠 Stylometric Analysis (spaCy)")
     
@@ -192,6 +188,15 @@ Hesitation: um, uh, er, maybe, perhaps"""
                 
                 st.success("Analysis Complete!")
                 st.dataframe(analyzed_df)
+                
+                # Export Button
+                csv = analyzed_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Analysis as CSV",
+                    data=csv,
+                    file_name='stylometric_analysis.csv',
+                    mime='text/csv',
+                )
                 
                 st.subheader("Linguistic Patterns")
                 pos_cols = ["noun_ratio", "verb_ratio", "adj_ratio", "adv_ratio"]
