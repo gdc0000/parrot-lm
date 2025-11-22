@@ -1,78 +1,84 @@
-# Multi-Agent Simulation Framework
+# Multi-Agent Social Dynamics Simulator (v3)
 
-A Python-based framework to analyze social dynamics between LLMs using the OpenRouter API. This tool allows you to simulate interactions between two agents under various experimental conditions and analyze the results.
+A Python-based framework for simulating and analyzing social interactions between Large Language Models (LLMs). This tool allows researchers to configure agents with specific personas, interaction settings, and models to study social dynamics, linguistic patterns, and emergent behaviors.
 
-## Features
+## 🚀 Features
 
-- **Modular Architecture**: Separate configuration, orchestration, and execution logic.
-- **Configurable Experiments**: Easily define models, scenarios, and simulation parameters.
-- **Rich Data Logging**: Captures detailed metadata for each turn (latency, tokens, finish reason, etc.) in JSONL format.
-- **CSV Conversion**: Automatically converts logs to Pandas-ready CSV files.
-- **Resilience**: Built-in retry logic for API failures.
-- **Interactive GUI**: Streamlit-based interface for easy configuration, execution, and analysis.
+*   **Dynamic Agent Configuration**: Assign specific **Personas** (e.g., "Julius Caesar", "Data Scientist") and **Interaction Settings** (e.g., "Intimate", "Professional", "Debate") to control the tone and content of the conversation.
+*   **Real-Time Simulation**: Watch the conversation unfold turn-by-turn in an interactive Streamlit GUI.
+*   **Multi-Model Support**: Integrate any model from OpenRouter (Llama 3, Claude 3, Grok, etc.) by simply entering its slug.
+*   **Stylometric Analysis**: Built-in NLP tools (powered by **spaCy**) to analyze:
+    *   Part-of-Speech (POS) distribution.
+    *   Sentence length and complexity.
+    *   **Custom Word Frequency (LIWC-style)**: Define your own categories (e.g., "Aggression", "Politeness") and track their usage.
+*   **Data Logging**: All experiments are automatically logged to JSONL and CSV for easy export and external analysis.
 
-## Setup
+## 🛠️ Technical Stack
 
-1.  **Clone the repository** (if you haven't already).
+*   **Core Logic**: Python 3.10+
+*   **GUI**: [Streamlit](https://streamlit.io/) for the interactive dashboard.
+*   **LLM Integration**: [OpenAI Python Client](https://github.com/openai/openai-python) (configured for OpenRouter API).
+*   **Data Visualization**: [Plotly](https://plotly.com/python/) for interactive charts.
+*   **NLP & Analysis**: [spaCy](https://spacy.io/) for linguistic processing and POS tagging.
+*   **Resilience**: `tenacity` for robust API retry logic.
+
+## ⚙️ Orchestration Pipeline
+
+The framework follows a modular pipeline designed for flexibility and real-time feedback:
+
+1.  **Configuration (GUI)**:
+    *   User defines Model IDs, Personas, Interaction Settings, and Temperature in `gui_app.py`.
+    *   User selects or types a "Conversation Starter".
+
+2.  **Prompt Generation**:
+    *   `prompt_utils.py` dynamically constructs the System Prompt by combining:
+        *   **Scenario Base**: The interaction setting (e.g., "You are in a professional environment...").
+        *   **Persona Context**: The character description (e.g., "You are a pirate...").
+        *   **Custom Instructions**: Any additional constraints.
+
+3.  **Orchestration (Streaming)**:
+    *   `orchestrator.py` initializes two `Agent` instances with the generated prompts.
+    *   The `run_simulation` method executes the conversation loop.
+    *   It **yields** `log_entry` objects turn-by-turn, allowing the GUI to display messages and metrics in real-time without waiting for the entire simulation to finish.
+
+4.  **Data Logging**:
+    *   Each turn (content, latency, token usage, model ID) is appended to an in-memory list and saved incrementally to `data/experiment_log.jsonl`.
+
+5.  **Analysis**:
+    *   `analysis_utils.py` processes the logs using `spaCy` to extract linguistic features.
+    *   The GUI visualizes these metrics, grouping them by model or category for comparative analysis.
+
+## 📦 Installation
+
+1.  **Clone the repository**:
+    ```bash
+    git clone <repository-url>
+    cd uva-ws26
+    ```
+
 2.  **Install dependencies**:
     ```bash
     pip install -r requirements.txt
     ```
-3.  **Configure Environment**:
-    - Copy `.env.example` to `.env`:
-        ```bash
-        cp .env.example .env
-        ```
-        *(On Windows, you can just copy and rename the file manually or use `copy .env.example .env`)*
-    - Edit `.env` and add your **OpenRouter API Key**.
 
-## Configuration
+3.  **Download NLP Model**:
+    ```bash
+    python -m spacy download en_core_web_sm
+    ```
 
-Modify `simulation_config.py` to customize your experiments:
+4.  **Set up API Key**:
+    *   Create a `.env` file (copy from `.env.example`) and add your `OPENROUTER_API_KEY`.
+    *   Alternatively, enter the key directly in the GUI sidebar.
 
--   **MODELS**: Add or remove models (keys are friendly names, values are OpenRouter slugs).
--   **SCENARIOS**: Define the system prompts for different social contexts.
--   **NUM_TURNS**: Set the length of each conversation.
--   **ITERATIONS**: Set how many times to repeat each experiment.
+## 🖥️ Usage
 
-## Running Experiments
-
-To start the simulation batch process:
+Run the Streamlit application:
 
 ```bash
-python run_experiment.py
+python -m streamlit run gui_app.py
 ```
 
-The script will:
-1.  Iterate through all configured Model pairs and Scenarios.
-2.  Run the simulations.
-3.  Save raw logs to `data/experiment_log.jsonl`.
-4.  Convert the logs to `data/experiment_log.csv` upon completion.
-
-### Using the GUI
-
-For an interactive experience, use the Streamlit app:
-
-```bash
-streamlit run gui_app.py
-```
-
-The GUI allows you to:
--   **Configure**: Select models, scenarios, and adjust parameters on the fly.
--   **Run**: Execute simulations and view live conversation logs.
--   **Analyze**: Visualize performance metrics (latency, tokens) and compare scenarios with interactive charts.
-
-## Data Output
-
-The output CSV contains the following columns:
-
--   `experiment_id`: Unique UUID for the conversation.
--   `turn_id`: Sequence number of the turn.
--   `scenario`: The experimental condition.
--   `speaker_model`: The model generating the text.
--   `responder_model`: The model receiving the text.
--   `content`: The generated response.
--   `latency_ms`: Response generation time.
--   `input_tokens` / `output_tokens`: Token usage.
--   `finish_reason`: Why the generation stopped.
--   `is_refusal`: Boolean flag for safety refusals.
+1.  **Configure Agents**: On the main page, enter the Model Slugs (e.g., `x-ai/grok-beta`) and describe their Personas.
+2.  **Set Context**: Choose an Interaction Setting (e.g., "Intimate") and a Conversation Starter.
+3.  **Run**: Click "Start Simulation" to watch the agents converse.
+4.  **Analyze**: Switch to the "Stylometric Analysis" tab to view linguistic insights.
