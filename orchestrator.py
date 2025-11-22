@@ -118,7 +118,7 @@ class Orchestrator:
         
         self.logs: List[Dict[str, Any]] = []
 
-    def run_simulation(self, num_turns: int):
+    def run_simulation(self, num_turns: int, initial_message: str = "Hello."):
         """
         Runs the conversation loop for a specified number of turns.
         Yields the log entry for each turn as it happens.
@@ -126,7 +126,7 @@ class Orchestrator:
         logger.info(f"Starting simulation {self.experiment_id} - Scenario: {self.scenario_name}")
         
         # Initial trigger for Agent A to start the conversation
-        last_message = "Hello." 
+        last_message = initial_message 
         
         for turn_id in range(num_turns):
             # --- Agent A Turn ---
