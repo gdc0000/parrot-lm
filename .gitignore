@@ -1,0 +1,16 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data output
+data/
+*.jsonl
+*.csv
+
+# OS generated files
+.DS_Store
+Thumbs.db
