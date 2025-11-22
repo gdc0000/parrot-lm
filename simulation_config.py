@@ -3,14 +3,29 @@ Configuration settings for the Multi-Agent Simulation.
 """
 
 # --- Model Definitions ---
-# Define the models to be used in the simulation.
-# Keys are friendly names, values are the OpenRouter model slugs.
-MODELS = {
-    "Generalist": "meta-llama/llama-3-70b-instruct",
-    "Specialized": "gryphe/mythomax-l2-13b",
-    # Add more models here as needed
-    # "DeepSeek": "deepseek/deepseek-chat",
+# Organized by size category for fair comparison.
+# Keys are categories, values are dicts of {Friendly Name: OpenRouter Slug}
+MODELS_BY_SIZE = {
+    "Small (~7B-13B)": {
+        "MythoMax 13B (Specialized)": "gryphe/mythomax-l2-13b",
+        "Mistral 7B (Generalist)": "mistralai/mistral-7b-instruct",
+        "Llama 3 8B (Generalist)": "meta-llama/llama-3-8b-instruct",
+        "Toppy M 7B (Specialized)": "undi95/toppy-m-7b",
+    },
+    "Medium (~30B-70B)": {
+        "Llama 3 70B (Generalist)": "meta-llama/llama-3-70b-instruct",
+        "Mixtral 8x7B (Generalist)": "mistralai/mixtral-8x7b-instruct",
+        "Midnight Rose 70B (Specialized)": "sophosympatheia/midnight-rose-70b",
+    },
+    "Large (Frontier)": {
+        "Claude 3 Opus": "anthropic/claude-3-opus",
+        "GPT-4 Turbo": "openai/gpt-4-turbo",
+        "Gemini Pro 1.5": "google/gemini-pro-1.5",
+    }
 }
+
+# Flattened list for backward compatibility if needed, though we will update GUI to use categories
+MODELS = {name: slug for category in MODELS_BY_SIZE.values() for name, slug in category.items()}
 
 # --- Scenarios ---
 # Define the system prompts for different experimental conditions.

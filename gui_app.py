@@ -4,8 +4,9 @@ import plotly.express as px
 import os
 import json
 import time
-from simulation_config import MODELS, SCENARIOS, NUM_TURNS, ITERATIONS, DATA_DIR
+from simulation_config import SCENARIOS, NUM_TURNS, ITERATIONS, DATA_DIR
 from run_experiment import run_experiments
+from analysis_utils import process_logs, process_custom_lexicon
 
 st.set_page_config(page_title="Multi-Agent Simulation v2", layout="wide")
 
@@ -34,13 +35,14 @@ with st.sidebar.expander("📝 Simulation Settings", expanded=True):
 st.sidebar.subheader("Agent Setup")
 
 col_a, col_b = st.sidebar.columns(2)
+
 with col_a:
     st.markdown("**Agent A**")
-    model_a_key = st.selectbox("Model A", list(MODELS.keys()), index=0, key="model_a")
+    model_a_slug = st.text_input("Model A Slug", "x-ai/grok-beta", key="model_a_custom")
     
 with col_b:
     st.markdown("**Agent B**")
-    model_b_key = st.selectbox("Model B", list(MODELS.keys()), index=1, key="model_b")
+    model_b_slug = st.text_input("Model B Slug", "meta-llama/llama-3-70b-instruct", key="model_b_custom")
 
 # --- Scenario & System Prompts ---
 st.sidebar.subheader("Scenario & Prompts")
@@ -58,37 +60,10 @@ with st.sidebar.expander("✏️ Edit System Prompts", expanded=False):
     prompt_b = st.text_area("Agent B System Prompt", base_prompt, height=150)
 
 # --- Main Content ---
-tab1, tab2 = st.tabs(["🚀 Live Simulation", "📊 Analysis"])
+tab1, tab2, tab3 = st.tabs(["🚀 Live Simulation", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
 
 with tab1:
     if st.button("Start Simulation", type="primary"):
-        # Prepare Configs
-        models = {model_a_key: MODELS[model_a_key], model_b_key: MODELS[model_b_key]}
-        # We construct a single-entry scenario dict for this run to keep run_experiment logic simple
-        # or we pass specific prompts. run_experiment iterates scenarios.
-        # Let's create a temporary scenario dict.
-        
-        current_scenarios = {"Current Run": "Custom"} # Placeholder, prompts are passed via config override? 
-        # Actually run_experiment iterates scenarios and uses the value as prompt.
-        # But we want different prompts for A and B.
-        # Our updated run_experiment takes agent_a_params but not agent_a_prompt override directly 
-        # unless we change how run_experiment works or we rely on the loop.
-        
-        # Hack: We'll pass a single scenario with a placeholder, but we need to inject the specific prompts.
-        # The current run_experiment uses the scenario value as the prompt for BOTH.
-        # To support different prompts, we should probably update run_experiment or just use the params to carry the prompt?
-        # Wait, run_experiment sets `system_prompt` in `agent_config`.
-        # If we want different prompts, we need to modify run_experiment to accept them or 
-        # we can just run the Orchestrator directly here for maximum control?
-        # NO, better to use run_experiment generator.
-        
-        # Let's use a trick: We pass a single scenario. 
-        # But wait, run_experiment forces the SAME prompt for both agents (from the scenario dict).
-        # If the user edited them to be different, we have a problem with the current run_experiment logic.
-        
-        # FIX: We will instantiate Orchestrator directly here for the "Live Run" to give full control.
-        # run_experiment is good for batch, but GUI "Live Run" is usually a single specific setup.
-        
         st.write("### 🟢 Live Conversation")
         
         # Containers for layout
@@ -99,12 +74,12 @@ with tab1:
         from orchestrator import Orchestrator
         
         agent_a_config = {
-            "model": MODELS[model_a_key],
+            "model": model_a_slug,
             "system_prompt": prompt_a,
             "params": {"temperature": temp_a, "max_tokens": max_tokens}
         }
         agent_b_config = {
-            "model": MODELS[model_b_key],
+            "model": model_b_slug,
             "system_prompt": prompt_b,
             "params": {"temperature": temp_b, "max_tokens": max_tokens}
         }
@@ -140,13 +115,11 @@ with tab1:
         st.success("Simulation Finished & Saved!")
 
 with tab2:
-    st.header("Data Analysis")
-    csv_path = os.path.join(DATA_DIR, "experiment_log.csv")
+    st.header("Basic Data Analysis")
     
-    if st.button("Refresh Data"):
+    if st.button("Refresh Data", key="refresh_basic"):
         st.rerun()
         
-    # We need to convert JSONL to CSV if it's not up to date, or just read JSONL directly
     jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
     if os.path.exists(jsonl_path):
         df = pd.read_json(jsonl_path, lines=True)
@@ -167,3 +140,88 @@ with tab2:
             
     else:
         st.info("No data found. Run an experiment first.")
+
+with tab3:
+    st.header("🧠 Stylometric Analysis (spaCy)")
+    st.markdown("Analyze linguistic patterns: Part-of-Speech usage, sentence length, and vocabulary richness.")
+    
+    # --- Custom Lexicon Input ---
+    st.subheader("Custom Word Frequency (LIWC-style)")
+    st.markdown("Define categories and words to count. Format: `Category: word1, word2, word3`")
+    
+    default_lexicon = """Positive: love, great, happy, good
+Negative: hate, bad, sad, terrible
+Hesitation: um, uh, er, maybe, perhaps"""
+    
+    lexicon_input = st.text_area("Define Custom Lexicon", default_lexicon, height=100)
+    
+    # Parse Lexicon
+    category_dict = {}
+    if lexicon_input:
+        for line in lexicon_input.split('\n'):
+            if ':' in line:
+                cat, words = line.split(':', 1)
+                category_dict[cat.strip()] = [w.strip() for w in words.split(',')]
+    
+    if st.button("Run Analysis", type="primary"):
+        jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
+        if os.path.exists(jsonl_path):
+            with st.spinner("Processing text..."):
+                df = pd.read_json(jsonl_path, lines=True)
+                
+                # 1. Standard SpaCy Analysis
+                analyzed_df = process_logs(df)
+                
+                # 2. Custom Lexicon Analysis
+                if category_dict:
+                    analyzed_df = process_custom_lexicon(analyzed_df, category_dict)
+                
+                st.success("Analysis Complete!")
+                st.dataframe(analyzed_df)
+                
+                # --- Visualizations ---
+                st.subheader("Linguistic Patterns")
+                
+                # POS Ratios
+                pos_cols = ["noun_ratio", "verb_ratio", "adj_ratio", "adv_ratio"]
+                avg_pos = analyzed_df.groupby("speaker_model")[pos_cols].mean().reset_index()
+                
+                # Melt for grouped bar chart
+                melted_pos = avg_pos.melt(id_vars="speaker_model", var_name="POS Type", value_name="Ratio")
+                
+                fig_pos = px.bar(melted_pos, x="speaker_model", y="Ratio", color="POS Type", barmode="group",
+                                 title="Part-of-Speech Distribution by Model")
+                st.plotly_chart(fig_pos, use_container_width=True)
+                
+                # Custom Lexicon Visualization
+                if category_dict:
+                    st.subheader("Custom Category Frequencies")
+                    lex_cols = list(category_dict.keys())
+                    # Sum counts per model (total occurrences) or mean (avg per message)
+                    # Let's show Average occurrences per message
+                    avg_lex = analyzed_df.groupby("speaker_model")[lex_cols].mean().reset_index()
+                    
+                    melted_lex = avg_lex.melt(id_vars="speaker_model", var_name="Category", value_name="Avg Count")
+                    
+                    fig_lex = px.bar(melted_lex, x="speaker_model", y="Avg Count", color="Category", barmode="group",
+                                     title="Custom Word Category Usage (Avg per Message)")
+                    st.plotly_chart(fig_lex, use_container_width=True)
+                
+                # Sentence Length
+                col1, col2 = st.columns(2)
+                with col1:
+                    avg_len = analyzed_df.groupby("speaker_model")["avg_sentence_length"].mean().reset_index()
+                    fig_len = px.bar(avg_len, x="speaker_model", y="avg_sentence_length", 
+                                     title="Average Sentence Length (tokens)")
+                    st.plotly_chart(fig_len, use_container_width=True)
+                    
+                with col2:
+                    # Vocabulary Richness (Type-Token Ratio approximation or similar)
+                    # Here we just show pronoun usage as a proxy for 'personal' style
+                    avg_pron = analyzed_df.groupby("speaker_model")["pron_ratio"].mean().reset_index()
+                    fig_pron = px.bar(avg_pron, x="speaker_model", y="pron_ratio", 
+                                      title="Pronoun Usage Ratio (Personal Style)")
+                    st.plotly_chart(fig_pron, use_container_width=True)
+                    
+        else:
+            st.warning("No data found. Please run a simulation first.")
