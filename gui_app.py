@@ -119,7 +119,9 @@ with tab1:
                 
                 # Display Message
                 with chat_container:
-                    with st.chat_message(log_entry["speaker_model"], avatar="A" if "Agent A" in log_entry["speaker_model"] or log_entry["speaker_model"] == model_a_slug else "B"):
+                    avatar = None  # Set avatar to None to avoid the image loading error
+                    print(f'DEBUG: avatar="{avatar}", speaker_model="{log_entry["speaker_model"]}", model_a_slug="{model_a_slug}"')
+                    with st.chat_message(log_entry["speaker_model"], avatar=avatar):
                         speaker_label = persona_a if log_entry["speaker_model"] == model_a_slug else persona_b
                         if len(speaker_label) > 20: speaker_label = speaker_label[:20] + "..."
                         st.markdown(f"**{speaker_label}** ({log_entry['speaker_model']})")
