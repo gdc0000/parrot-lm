@@ -1,4 +1,5 @@
 # Multi-Agent Social Dynamics Simulator (v3)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A Python-based framework for simulating and analyzing social interactions between Large Language Models (LLMs). This tool allows researchers to configure agents with specific personas, interaction settings, and models to study social dynamics, linguistic patterns, and emergent behaviors.
 
@@ -82,3 +83,7 @@ python -m streamlit run gui_app.py
 2.  **Set Context**: Choose an Interaction Setting (e.g., "Intimate") and a Conversation Starter.
 3.  **Run**: Click "Start Simulation" to watch the agents converse.
 4.  **Analyze**: Switch to the "Stylometric Analysis" tab to view linguistic insights.
+
+## License
+
+This project is licensed under the Apache License, Version 2.0. See `LICENSE` file for details.
