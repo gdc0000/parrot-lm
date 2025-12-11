@@ -3,14 +3,14 @@ import pandas as pd
 import plotly.express as px
 import os
 import time
-from simulation_config import NUM_TURNS, ITERATIONS, DATA_DIR
+from simulation_config import NUM_TURNS, DATA_DIR
 from analysis_utils import process_logs, process_custom_lexicon
 from prompt_utils import construct_system_prompt
 
-st.set_page_config(page_title="LLmsTalK!", layout="wide")
+st.set_page_config(page_title="🦜ParrotLM", layout="wide")
 
-st.title("🤖 LLmsTalK!")
-st.markdown("LLmsTalK! is a Python framework for simulating conversations " \
+st.title("🦜ParrotLM")
+st.markdown("A customizable Python framework for simulating conversations " \
 "between two LLM agents with customizable personas, interaction settings, and analysis capabilities. ")
 
 # --- Sidebar: Technical Configuration ---
@@ -30,12 +30,17 @@ temp_b = st.sidebar.slider("Agent B Temperature", 0.0, 2.0, 1.0, 0.1)
 max_tokens = st.sidebar.number_input("Max Tokens", 50, 4096, 1000)
 
 # --- Tabs: Main Structure ---
+# New tab structure:
+# 1. Agent Setup
+# 2. Interaction & Prompts (includes Start Simulation button)
+# 3. Basic Analysis
+# 4. Stylometric Analysis
 st.markdown("---")
-tab1, tab2, tab3 = st.tabs(["🎭 Agent & Interaction Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
+tab1, tab2, tab3, tab4 = st.tabs(["🎭 Agent Setup", "🌍 Interaction & Prompts", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
 
-# --- Tab 1: Setup & Simulation ---
+# --- Tab 1: Agent Setup ---
 with tab1:
-    st.markdown("### Configure Agents & Context")
+    st.markdown("### Configure Agents")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -50,7 +55,9 @@ with tab1:
         persona_b = st.text_area("Persona / Character", "A modern data scientist", height=100,
                                  help="Describe the character, style, or historical figure.")
 
-    st.markdown("#### 🌍 Interaction Context")
+# --- Tab 2: Interaction & Prompts ---
+with tab2:
+    st.markdown("### 🌍 Interaction Context")
     context_col1, context_col2 = st.columns(2)
     with context_col1:
         interaction_setting = st.selectbox("Setting / Tone", ["Professional", "Intimate", "Casual", "Debate", "Custom"])
@@ -69,36 +76,56 @@ with tab1:
         else:
             initial_message = st.text_input("Custom Initial Message", "Hello.", label_visibility="collapsed")
 
-    if interaction_setting == "Custom":
-        st.markdown("#### Custom Contexts")
-        custom_col1, custom_col2 = st.columns(2)
-        with custom_col1:
-            custom_a = st.text_area(
-                "Context for Agent A",
-                placeholder="Enter custom scenario/context for Agent A (replaces base prompt)...",
-                height=120
-            )
-        with custom_col2:
-            custom_b = st.text_area(
-                "Context for Agent B",
-                placeholder="Enter custom scenario/context for Agent B (replaces base prompt)...",
-                height=120
-            )
+    st.markdown("### 🔍 Generated System Prompts (Editable)")
     st.markdown("---")
     
+    # These will hold the custom context if the user selects "Custom"
+    # Initialize with empty strings, they will be populated by the text_area widgets
+    custom_a = ""
+    custom_b = ""
+
+    # Always display custom context text areas, but they will be empty if not in "Custom" mode
+    custom_col1, custom_col2 = st.columns(2)
+    with custom_col1:
+        custom_a = st.text_area(
+            "Context for Agent A",
+            placeholder="Enter custom scenario/context for Agent A (replaces base prompt)...",
+            height=120,
+            key="custom_a_context"
+        )
+    with custom_col2:
+        custom_b = st.text_area(
+            "Context for Agent B",
+            placeholder="Enter custom scenario/context for Agent B (replaces base prompt)...",
+            height=120,
+            key="custom_b_context"
+        )
+
+    # Construct System Prompts Dynamically for initial display
+    # Use custom context if provided, otherwise use the selected interaction_setting
+    if interaction_setting == "Custom":
+        # If the setting is Custom, use the text from the custom context areas
+        initial_prompt_a = construct_system_prompt("Custom", persona_a, custom_a)
+        initial_prompt_b = construct_system_prompt("Custom", persona_b, custom_b)
+    else:
+        # Otherwise, use the selected interaction setting and ignore custom context inputs
+        initial_prompt_a = construct_system_prompt(interaction_setting, persona_a)
+        initial_prompt_b = construct_system_prompt(interaction_setting, persona_b)
+
+    prompt_col1, prompt_col2 = st.columns(2)
+    with prompt_col1:
+        system_prompt_a = st.text_area("Agent A System Prompt", initial_prompt_a, height=200, key="system_prompt_a")
+    
+    with prompt_col2:
+        system_prompt_b = st.text_area("Agent B System Prompt", initial_prompt_b, height=200, key="system_prompt_b")
+    
+    # Move "Start Simulation" button to this tab
     if st.button("Start Simulation", type="primary", use_container_width=True):
         st.write("### 🟢 Live Conversation")
         
-        # Construct System Prompts Dynamically
-        if interaction_setting == "Custom":
-            system_prompt_a = construct_system_prompt("Custom", persona_a, custom_a)
-            system_prompt_b = construct_system_prompt("Custom", persona_b, custom_b)
-        else:
-            system_prompt_a = construct_system_prompt(interaction_setting, persona_a)
-            system_prompt_b = construct_system_prompt(interaction_setting, persona_b)
-        
-        # Display the generated prompts for transparency
-        with st.expander("View Generated System Prompts"):
+        # Display the final prompts being used (from the text areas)
+        with st.expander("View Final System Prompts Used in Simulation"):
+            # Accessing system_prompt_a and system_prompt_b defined within this tab's scope
             st.markdown(f"**Agent A Prompt:**\n{system_prompt_a}")
             st.markdown(f"**Agent B Prompt:**\n{system_prompt_b}")
         
@@ -110,27 +137,27 @@ with tab1:
         from orchestrator import Orchestrator
         
         agent_a_config = {
-            "model": model_a_slug,
-            "system_prompt": system_prompt_a,
-            "params": {"temperature": temp_a, "max_tokens": max_tokens}
+            "model": model_a_slug, # From tab1
+            "system_prompt": system_prompt_a, # From tab2
+            "params": {"temperature": temp_a, "max_tokens": max_tokens} # From sidebar
         }
         agent_b_config = {
-            "model": model_b_slug,
-            "system_prompt": system_prompt_b,
-            "params": {"temperature": temp_b, "max_tokens": max_tokens}
+            "model": model_b_slug, # From tab1
+            "system_prompt": system_prompt_b, # From tab2
+            "params": {"temperature": temp_b, "max_tokens": max_tokens} # From sidebar
         }
         
         orchestrator = Orchestrator(
             agent_a_config=agent_a_config,
             agent_b_config=agent_b_config,
-            scenario_name=f"{interaction_setting} - {persona_a[:20]} vs {persona_b[:20]}"
+            scenario_name=f"{interaction_setting} - {persona_a[:20]} vs {persona_b[:20]}" # From tab1 and tab2
         )
         
         # Run and Stream
         total_tokens = 0
         
         with st.spinner("Agents are conversing..."):
-            for log_entry in orchestrator.run_simulation(num_turns, initial_message=initial_message):
+            for log_entry in orchestrator.run_simulation(num_turns, initial_message=initial_message): # initial_message from tab2
                 # Update Metrics
                 total_tokens += log_entry["output_tokens"]
                 metric_col1.metric("Last Latency", f"{log_entry['latency_ms']:.0f} ms")
@@ -153,8 +180,8 @@ with tab1:
         orchestrator.save_logs(jsonl_path)
         st.success("Simulation Finished & Saved!")
 
-# --- Tab 2: Basic Analysis ---
-with tab2:
+# --- Tab 3: Basic Analysis ---
+with tab3:
     st.header("Basic Data Analysis")
     if st.button("Refresh Data", key="refresh_basic"):
         st.rerun()
@@ -177,8 +204,8 @@ with tab2:
     else:
         st.info("No data found.")
 
-# --- Tab 3: Stylometric Analysis ---
-with tab3:
+# --- Tab 4: Stylometric Analysis ---
+with tab4:
     st.header("🧠 Stylometric Analysis (spaCy)")
     
     # --- Custom Lexicon Input ---

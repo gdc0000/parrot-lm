@@ -1,4 +1,4 @@
-# LLMsTalk!
+# 🦜ParrotLM
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A Python-based framework for simulating and analyzing social interactions between Large Language Models (LLMs). This tool allows researchers to configure agents with specific personas, interaction settings, and models to study social dynamics, linguistic patterns, and emergent behaviors.
@@ -54,7 +54,6 @@ The framework follows a modular pipeline designed for flexibility and real-time 
 1.  **Clone the repository**:
     ```bash
     git clone <repository-url>
-    cd uva-ws26
     ```
 
 2.  **Install dependencies**:
