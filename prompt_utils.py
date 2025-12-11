@@ -29,7 +29,10 @@ def construct_system_prompt(scenario_type, persona, custom_instructions=""):
     }
     
     # Start with the base scenario context
-    prompt = base_prompts.get(scenario_type, base_prompts["Professional"])
+    if scenario_type == "Custom":
+        prompt = custom_instructions
+    else:
+        prompt = base_prompts.get(scenario_type, base_prompts["Professional"])
     
     # Inject Persona
     if persona and persona.strip():
@@ -37,7 +40,7 @@ def construct_system_prompt(scenario_type, persona, custom_instructions=""):
         prompt += "You must fully embody this character. Adopt their speech style, vocabulary, mannerisms, and worldview. Do not break character."
         
     # Add Custom Instructions
-    if custom_instructions and custom_instructions.strip():
+    if custom_instructions and custom_instructions.strip() and scenario_type != "Custom":
         prompt += f"\n\nADDITIONAL INSTRUCTIONS:\n{custom_instructions}"
         
     return prompt

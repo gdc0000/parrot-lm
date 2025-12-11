@@ -2,16 +2,16 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
-import json
 import time
 from simulation_config import NUM_TURNS, ITERATIONS, DATA_DIR
-from run_experiment import run_experiments
 from analysis_utils import process_logs, process_custom_lexicon
 from prompt_utils import construct_system_prompt
 
-st.set_page_config(page_title="Multi-Agent Simulation v3", layout="wide")
+st.set_page_config(page_title="LLmsTalK!", layout="wide")
 
-st.title("🤖 Multi-Agent Social Dynamics Simulator v3")
+st.title("🤖 LLmsTalK!")
+st.markdown("LLmsTalK! is a Python framework for simulating conversations " \
+"between two LLM agents with customizable personas, interaction settings, and analysis capabilities. ")
 
 # --- Sidebar: Technical Configuration ---
 st.sidebar.header("⚙️ Technical Settings")
@@ -53,7 +53,7 @@ with tab1:
     st.markdown("#### 🌍 Interaction Context")
     context_col1, context_col2 = st.columns(2)
     with context_col1:
-        interaction_setting = st.selectbox("Setting / Tone", ["Professional", "Intimate", "Casual", "Debate"])
+        interaction_setting = st.selectbox("Setting / Tone", ["Professional", "Intimate", "Casual", "Debate", "Custom"])
 
     with context_col2:
         starter_mode = st.radio("Starter Mode", ["Preset", "Custom"], horizontal=True)
@@ -69,14 +69,33 @@ with tab1:
         else:
             initial_message = st.text_input("Custom Initial Message", "Hello.", label_visibility="collapsed")
 
+    if interaction_setting == "Custom":
+        st.markdown("#### Custom Contexts")
+        custom_col1, custom_col2 = st.columns(2)
+        with custom_col1:
+            custom_a = st.text_area(
+                "Context for Agent A",
+                placeholder="Enter custom scenario/context for Agent A (replaces base prompt)...",
+                height=120
+            )
+        with custom_col2:
+            custom_b = st.text_area(
+                "Context for Agent B",
+                placeholder="Enter custom scenario/context for Agent B (replaces base prompt)...",
+                height=120
+            )
     st.markdown("---")
     
     if st.button("Start Simulation", type="primary", use_container_width=True):
         st.write("### 🟢 Live Conversation")
         
         # Construct System Prompts Dynamically
-        system_prompt_a = construct_system_prompt(interaction_setting, persona_a)
-        system_prompt_b = construct_system_prompt(interaction_setting, persona_b)
+        if interaction_setting == "Custom":
+            system_prompt_a = construct_system_prompt("Custom", persona_a, custom_a)
+            system_prompt_b = construct_system_prompt("Custom", persona_b, custom_b)
+        else:
+            system_prompt_a = construct_system_prompt(interaction_setting, persona_a)
+            system_prompt_b = construct_system_prompt(interaction_setting, persona_b)
         
         # Display the generated prompts for transparency
         with st.expander("View Generated System Prompts"):
