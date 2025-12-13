@@ -1,7 +1,7 @@
-# LLmsTalK! Framework Module Map
+# ParrotLM Framework Module Map
 
 ## Overview
-LLmsTalK! is a Python framework for simulating conversations between two LLM agents with customizable personas, interaction settings, and analysis capabilities. It uses Streamlit for the GUI, OpenRouter/OpenAI API for LLM calls, spaCy for stylometric analysis, and Pandas/Plotly for data visualization and metrics.
+ParrotLM is a Python framework for simulating conversations between two LLM agents with customizable personas, interaction settings, and analysis capabilities. It uses Streamlit for the GUI, OpenRouter/OpenAI API for LLM calls, spaCy for stylometric analysis, and Pandas/Plotly for data visualization and metrics.
 
 The core modules are:
 - Configuration: [`simulation_config.py`](simulation_config.py)
