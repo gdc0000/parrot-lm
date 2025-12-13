@@ -3,6 +3,6 @@ pandas>=2.0.0
 python-dotenv>=1.0.0
 tenacity>=8.0.0
 streamlit
-plotly
-spacy>=1.30.0
 plotly>=5.18.0
+spacy>=3.0.0
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz#egg=en_core_web_sm
