@@ -8,7 +8,7 @@ A Python-based framework for simulating and analyzing social interactions betwee
 *   **Dynamic Agent Configuration**: Assign specific **Personas** (e.g., "Julius Caesar", "Data Scientist") and **Interaction Settings** (e.g., "Intimate", "Professional", "Debate") to control the tone and content of the conversation.
 *   **Real-Time Simulation**: Watch the conversation unfold turn-by-turn in an interactive Streamlit GUI.
 *   **Multi-Model Support**: Integrate any model from OpenRouter (Llama 3, Claude 3, Grok, etc.) by simply entering its slug.
-*   **Stylometric Analysis**: Built-in NLP tools (powered by **spaCy**) to analyze:
+*   **Stylometric Analysis**: Built-in NLP tools (powered by **NLTK**) to analyze:
     *   Part-of-Speech (POS) distribution.
     *   Sentence length and complexity.
     *   **Custom Word Frequency (LIWC-style)**: Define your own categories (e.g., "Aggression", "Politeness") and track their usage.
@@ -20,7 +20,7 @@ A Python-based framework for simulating and analyzing social interactions betwee
 *   **GUI**: [Streamlit](https://streamlit.io/) for the interactive dashboard.
 *   **LLM Integration**: [OpenAI Python Client](https://github.com/openai/openai-python) (configured for OpenRouter API).
 *   **Data Visualization**: [Plotly](https://plotly.com/python/) for interactive charts.
-*   **NLP & Analysis**: [spaCy](https://spacy.io/) for linguistic processing and POS tagging.
+*   **NLP & Analysis**: [NLTK](https://www.nltk.org/) for linguistic processing and POS tagging.
 *   **Resilience**: `tenacity` for robust API retry logic.
 
 ## ⚙️ Orchestration Pipeline
@@ -46,7 +46,7 @@ The framework follows a modular pipeline designed for flexibility and real-time 
     *   Each turn (content, latency, token usage, model ID) is appended to an in-memory list and saved incrementally to `data/experiment_log.jsonl`.
 
 5.  **Analysis**:
-    *   `analysis_utils.py` processes the logs using `spaCy` to extract linguistic features.
+    *   `analysis_utils.py` processes the logs using `NLTK` to extract linguistic features.
     *   The GUI visualizes these metrics, grouping them by model or category for comparative analysis.
 
 ## 📦 Installation
@@ -61,10 +61,7 @@ The framework follows a modular pipeline designed for flexibility and real-time 
     pip install -r requirements.txt
     ```
 
-3.  **Download NLP Model**:
-    ```bash
-    python -m spacy download en_core_web_sm
-    ```
+> **Note:** NLTK does not require a separate model download; required data will be downloaded automatically on first run.
 
 4.  **Set up API Key**:
     *   Create a `.env` file (copy from `.env.example`) and add your `OPENROUTER_API_KEY`.

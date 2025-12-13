@@ -1,32 +1,53 @@
-import spacy
+import nltk
 import pandas as pd
 from collections import Counter
 
-# Load spaCy model
+# Ensure necessary NLTK data is downloaded
 try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    # Fallback if model not found, though it should be installed
-    print("Downloading en_core_web_sm...")
-    from spacy.cli import download
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+    nltk.data.find('tokenizers/punkt')
+    nltk.data.find('tokenizers/punkt_tab')
+    nltk.data.find('taggers/averaged_perceptron_tagger')
+    nltk.data.find('taggers/averaged_perceptron_tagger_eng')
+    nltk.data.find('taggers/universal_tagset')
+except LookupError:
+    nltk.download('punkt')
+    nltk.download('punkt_tab')
+    nltk.download('averaged_perceptron_tagger')
+    nltk.download('averaged_perceptron_tagger_eng')
+    nltk.download('universal_tagset')
 
 def analyze_text(text):
     """
-    Analyzes a single text string and returns stylometric metrics.
+    Analyzes a single text string and returns stylometric metrics using NLTK.
     """
-    doc = nlp(text)
+    if not text:
+        return {
+            "token_count": 0,
+            "sentence_count": 0,
+            "avg_sentence_length": 0,
+            "noun_ratio": 0,
+            "verb_ratio": 0,
+            "adj_ratio": 0,
+            "adv_ratio": 0,
+            "pron_ratio": 0,
+        }
+
+    # Tokenize
+    tokens = nltk.word_tokenize(text)
+    sentences = nltk.sent_tokenize(text)
+    
+    # POS Tagging (Universal Tagset for simpler tags: NOUN, VERB, ADJ, ADV, etc.)
+    tagged_tokens = nltk.pos_tag(tokens, tagset='universal')
     
     # POS Counts
-    pos_counts = Counter([token.pos_ for token in doc])
-    total_tokens = len(doc)
+    pos_counts = Counter([tag for word, tag in tagged_tokens])
+    total_tokens = len(tokens)
     
     # Calculate ratios
     metrics = {
         "token_count": total_tokens,
-        "sentence_count": len(list(doc.sents)),
-        "avg_sentence_length": total_tokens / len(list(doc.sents)) if len(list(doc.sents)) > 0 else 0,
+        "sentence_count": len(sentences),
+        "avg_sentence_length": total_tokens / len(sentences) if len(sentences) > 0 else 0,
         "noun_ratio": pos_counts.get("NOUN", 0) / total_tokens if total_tokens > 0 else 0,
         "verb_ratio": pos_counts.get("VERB", 0) / total_tokens if total_tokens > 0 else 0,
         "adj_ratio": pos_counts.get("ADJ", 0) / total_tokens if total_tokens > 0 else 0,

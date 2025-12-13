@@ -206,7 +206,7 @@ with tab3:
 
 # --- Tab 4: Stylometric Analysis ---
 with tab4:
-    st.header("🧠 Stylometric Analysis (spaCy)")
+    st.header("🧠 Stylometric Analysis (NLTK)")
     
     # --- Custom Lexicon Input ---
     st.subheader("Custom Word Frequency (LIWC-style)")
