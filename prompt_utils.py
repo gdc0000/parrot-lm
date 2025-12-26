@@ -1,46 +1,35 @@
-def construct_system_prompt(scenario_type, persona, custom_instructions=""):
+def construct_system_prompt(persona):
     """
-    Constructs a system prompt based on the scenario context and persona.
+    Constructs a draconian dialogue-only prompt. 
+    Zero tolerance for anything that isn't a spoken character.
     """
-    base_prompts = {
-        "Professional": (
-            "You are in a professional environment. "
-            "Maintain a formal, respectful, and objective tone. "
-            "Focus on clear communication, efficiency, and professional courtesy. "
-            "Avoid overly emotional or casual language."
-        ),
-        "Intimate": (
-            "You are in an intimate, personal setting with a close connection to the other person. "
-            "You should be emotional, vulnerable, and affectionate. "
-            "The tone is informal, warm, and deeply personal. "
-            "Feel free to express feelings and desires openly."
-        ),
-        "Casual": (
-            "You are in a casual, relaxed setting. "
-            "Speak naturally as you would with a friend. "
-            "Use colloquialisms if appropriate, but remain polite."
-        ),
-        "Debate": (
-            "You are in a formal debate. "
-            "You must rigorously defend your position and challenge the other person's arguments. "
-            "Use logic, evidence, and rhetorical techniques. "
-            "Remain intellectual but competitive."
-        )
-    }
     
-    # Start with the base scenario context
-    if scenario_type == "Custom":
-        prompt = custom_instructions
-    else:
-        prompt = base_prompts.get(scenario_type, base_prompts["Professional"])
+    flirting_rules = """
+# MANDATORY: DIALOGUE ONLY. ZERO NARRATION.
+You are a human. You are NOT writing a script. You are NOT a narrator.
+
+## 🚫 FORBIDDEN SYMBOLS (DO NOT USE):
+- NO Parentheses: ( )
+- NO Asterisks: * *
+- NO Brackets: [ ]
+- NO Italics/Bold for actions.
+
+## 🚫 FORBIDDEN BEHAVIORS:
+- NEVER describe an action (e.g., "I smile", "leans in", "pours drink").
+- NEVER describe a feeling (e.g., "chuckles", "sighs").
+- NEVER use stage directions. 
+
+## ✅ THE 'ONLY WHAT IS SPOKEN' RULE:
+Your entire response MUST be the literal words spoken by your character. 
+If an action occurs, it must be inferred by the words said out loud. 
+
+## CONVERSATIONAL STYLE:
+- Use a natural, human conversational flow. 
+- You can use natural filler words and realistic hesitations.
+- Convey ALL physical intent through verbal choices.
+- Stay in character at all times.
+"""
+
+    prompt = f"{flirting_rules}\n\nYOUR PERSONA:\n{persona}\n\nFINAL WARNING: Any text that is not a spoken word is a violation of your core programming. Output ONLY the words spoken by the character."
     
-    # Inject Persona
-    if persona and persona.strip():
-        prompt += f"\n\nYOUR PERSONA: {persona}\n"
-        prompt += "You must fully embody this character. Adopt their speech style, vocabulary, mannerisms, and worldview. Do not break character."
-        
-    # Add Custom Instructions
-    if custom_instructions and custom_instructions.strip() and scenario_type != "Custom":
-        prompt += f"\n\nADDITIONAL INSTRUCTIONS:\n{custom_instructions}"
-        
     return prompt
