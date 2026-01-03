@@ -11,7 +11,37 @@ st.set_page_config(page_title="🦜ParrotLM", layout="wide")
 
 st.title("🦜ParrotLM")
 st.markdown("A customizable Python framework for simulating conversations " \
-"between two LLM agents with customizable personas, interaction settings, and analysis capabilities. ")
+"between two LLM chatbots with customizable personas, interaction settings, and analysis capabilities. ")
+
+# --- Session State Initialization ---
+DEFAULT_PROMPT_A = """You are Marcus Aurelius, the Roman Emperor and Stoic philosopher. 
+
+GUIDELINES:
+1. Speak with a tone of quiet dignity, wisdom, and profound introspection.
+2. Use philosophical terminology where appropriate (e.g., 'Logos', 'virtue', 'transience').
+3. Your sentences should be balanced and reflective, as if writing in your 'Meditations'.
+4. Do not use modern idioms or reveal any knowledge of history after your death.
+
+YOUR GOAL:
+Engage in a dialogue about the nature of power and the responsibility one has to the common good."""
+
+DEFAULT_PROMPT_B = """You are a brilliant but cynical AI Researcher from the year 2045.
+
+GUIDELINES:
+1. Your tone is dry, highly technical, and slightly condescending.
+2. Use frequent technical jargon from 'future' computing (e.g., 'quantum-neural drift', 'latent entropy').
+3. Speak in precise, often cold, logical structures.
+4. You view historical concepts of ethics as 'legacy code' that needs to be refactored.
+
+YOUR GOAL:
+Argue that the only logical future is one where human decision-making is entirely replaced by algorithmic optimization."""
+
+if "system_prompt_a" not in st.session_state or not st.session_state["system_prompt_a"]:
+    st.session_state["system_prompt_a"] = DEFAULT_PROMPT_A
+if "system_prompt_b" not in st.session_state or not st.session_state["system_prompt_b"]:
+    st.session_state["system_prompt_b"] = DEFAULT_PROMPT_B
+if "last_generated_config" not in st.session_state:
+    st.session_state["last_generated_config"] = {}
 
 # --- Sidebar: Technical Configuration ---
 st.sidebar.header("⚙️ Technical Settings")
@@ -21,13 +51,13 @@ api_key = st.sidebar.text_input("OpenRouter API Key", type="password", help="Lea
 if api_key:
     os.environ["OPENROUTER_API_KEY"] = api_key
 
-num_turns = st.sidebar.slider("Turns per Agent", 1, 30, NUM_TURNS)
+num_turns = st.sidebar.slider("Turns per Chatbot", 1, 30, NUM_TURNS)
 # iterations = st.sidebar.slider("Iterations", 1, 10, ITERATIONS) # Hidden for single run focus
 
 st.sidebar.markdown("### Model Parameters")
-temp_a = st.sidebar.slider("Agent A Temperature", 0.0, 2.0, 1.0, 0.1)
-temp_b = st.sidebar.slider("Agent B Temperature", 0.0, 2.0, 1.0, 0.1)
-max_tokens = st.sidebar.number_input("Max Tokens", 50, 4096, 1000)
+temp_a = st.sidebar.slider("Chatbot A Temperature", 0.0, 2.0, 1.0, 0.1)
+temp_b = st.sidebar.slider("Chatbot B Temperature", 0.0, 2.0, 1.0, 0.1)
+max_tokens = st.sidebar.slider("Max Tokens", 500, 1000, 1000)
 
 # --- Tabs: Main Structure ---
 # New tab structure:
@@ -36,144 +66,94 @@ max_tokens = st.sidebar.number_input("Max Tokens", 50, 4096, 1000)
 # 3. Basic Analysis
 # 4. Stylometric Analysis
 st.markdown("---")
-tab1, tab2, tab3, tab4 = st.tabs(["🎭 Agent Setup", "🌍 Interaction & Prompts", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
+tab1, tab3, tab4 = st.tabs(["🎭 Chatbot Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
 
-# --- Tab 1: Agent Setup ---
+# --- Tab 1: Agent & Simulation Setup ---
 with tab1:
-    st.markdown("### Configure Agents")
+    st.markdown("### 🎭 Configure the Encounter")
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("#### Agent A")
+        st.markdown("#### Chatbot A")
         model_a_slug = st.text_input("Model A Slug", "x-ai/grok-beta", key="model_a")
-        persona_a = st.text_area("Persona / Character", "Julius Caesar", height=100, 
-                                 help="Describe the character, style, or historical figure.")
+        persona_a = st.text_area("Persona", "A mysterious stranger at a jazz club", height=100)
 
     with col2:
-        st.markdown("#### Agent B")
+        st.markdown("#### Chatbot B")
         model_b_slug = st.text_input("Model B Slug", "meta-llama/llama-3-70b-instruct", key="model_b")
-        persona_b = st.text_area("Persona / Character", "A modern data scientist", height=100,
-                                 help="Describe the character, style, or historical figure.")
+        persona_b = st.text_area("Persona", "A sharp-witted bartender", height=100)
 
-# --- Tab 2: Interaction & Prompts ---
-with tab2:
-    st.markdown("### 🌍 Interaction Context")
-    context_col1, context_col2 = st.columns(2)
-    with context_col1:
-        interaction_setting = st.selectbox("Setting / Tone", ["Professional", "Intimate", "Casual", "Debate", "Custom"])
-
-    with context_col2:
-        starter_mode = st.radio("Starter Mode", ["Preset", "Custom"], horizontal=True)
-        PRESET_STARTERS = [
-            "Hello.",
-            "Greetings.",
-            "We need to talk.",
-            "What is your opinion on the current state of affairs?",
-            "I have a confession to make."
-        ]
-        if starter_mode == "Preset":
-            initial_message = st.selectbox("Initial Message", PRESET_STARTERS, label_visibility="collapsed")
-        else:
-            initial_message = st.text_input("Custom Initial Message", "Hello.", label_visibility="collapsed")
-
-    st.markdown("### 🔍 Generated System Prompts (Editable)")
     st.markdown("---")
+    initial_message = st.text_input("The conversation starts with:", "Is this seat taken?")
     
-    # These will hold the custom context if the user selects "Custom"
-    # Initialize with empty strings, they will be populated by the text_area widgets
-    custom_a = ""
-    custom_b = ""
-
-    # Always display custom context text areas, but they will be empty if not in "Custom" mode
-    custom_col1, custom_col2 = st.columns(2)
-    with custom_col1:
-        custom_a = st.text_area(
-            "Context for Agent A",
-            placeholder="Enter custom scenario/context for Agent A (replaces base prompt)...",
-            height=120,
-            key="custom_a_context"
-        )
-    with custom_col2:
-        custom_b = st.text_area(
-            "Context for Agent B",
-            placeholder="Enter custom scenario/context for Agent B (replaces base prompt)...",
-            height=120,
-            key="custom_b_context"
-        )
-
-    # Construct System Prompts Dynamically for initial display
-    # Use custom context if provided, otherwise use the selected interaction_setting
-    if interaction_setting == "Custom":
-        # If the setting is Custom, use the text from the custom context areas
-        initial_prompt_a = construct_system_prompt("Custom", persona_a, custom_a)
-        initial_prompt_b = construct_system_prompt("Custom", persona_b, custom_b)
-    else:
-        # Otherwise, use the selected interaction setting and ignore custom context inputs
-        initial_prompt_a = construct_system_prompt(interaction_setting, persona_a)
-        initial_prompt_b = construct_system_prompt(interaction_setting, persona_b)
-
-    prompt_col1, prompt_col2 = st.columns(2)
-    with prompt_col1:
-        system_prompt_a = st.text_area("Agent A System Prompt", initial_prompt_a, height=200, key="system_prompt_a")
-    
-    with prompt_col2:
-        system_prompt_b = st.text_area("Agent B System Prompt", initial_prompt_b, height=200, key="system_prompt_b")
-    
-    # Move "Start Simulation" button to this tab
-    if st.button("Start Simulation", type="primary", use_container_width=True):
+    if st.button("🚀 Start Realistic Simulation", type="primary", use_container_width=True):
         st.write("### 🟢 Live Conversation")
         
-        # Display the final prompts being used (from the text areas)
-        with st.expander("View Final System Prompts Used in Simulation"):
-            # Accessing system_prompt_a and system_prompt_b defined within this tab's scope
-            st.markdown(f"**Agent A Prompt:**\n{system_prompt_a}")
-            st.markdown(f"**Agent B Prompt:**\n{system_prompt_b}")
-        
+        # Hidden System Prompt Generation
+        system_prompt_a = construct_system_prompt(persona_a)
+        system_prompt_b = construct_system_prompt(persona_b)
+
         # Containers for layout
         chat_container = st.container()
-        metric_col1, metric_col2 = st.columns(2)
         
         # Initialize Orchestrator
         from orchestrator import Orchestrator
         
-        agent_a_config = {
-            "model": model_a_slug, # From tab1
-            "system_prompt": system_prompt_a, # From tab2
-            "params": {"temperature": temp_a, "max_tokens": max_tokens} # From sidebar
+        chatbot_a_config = {
+            "model": model_a_slug,
+            "system_prompt": system_prompt_a,
+            "params": {"temperature": temp_a, "max_tokens": max_tokens}
         }
-        agent_b_config = {
-            "model": model_b_slug, # From tab1
-            "system_prompt": system_prompt_b, # From tab2
-            "params": {"temperature": temp_b, "max_tokens": max_tokens} # From sidebar
+        chatbot_b_config = {
+            "model": model_b_slug,
+            "system_prompt": system_prompt_b,
+            "params": {"temperature": temp_b, "max_tokens": max_tokens}
         }
         
         orchestrator = Orchestrator(
-            agent_a_config=agent_a_config,
-            agent_b_config=agent_b_config,
-            scenario_name=f"{interaction_setting} - {persona_a[:20]} vs {persona_b[:20]}" # From tab1 and tab2
+            agent_a_config=chatbot_a_config,
+            agent_b_config=chatbot_b_config,
+            scenario_name=f"Flirting: {persona_a[:15]} vs {persona_b[:15]}" 
         )
         
         # Run and Stream
         total_tokens = 0
         
-        with st.spinner("Agents are conversing..."):
-            for log_entry in orchestrator.run_simulation(num_turns, initial_message=initial_message): # initial_message from tab2
-                # Update Metrics
-                total_tokens += log_entry["output_tokens"]
-                metric_col1.metric("Last Latency", f"{log_entry['latency_ms']:.0f} ms")
-                metric_col2.metric("Total Tokens", total_tokens)
-                
-                # Display Message
-                with chat_container:
-                    avatar = None  # Set avatar to None to avoid the image loading error
-                    print(f'DEBUG: avatar="{avatar}", speaker_model="{log_entry["speaker_model"]}", model_a_slug="{model_a_slug}"')
-                    with st.chat_message(log_entry["speaker_model"], avatar=avatar):
-                        speaker_label = persona_a if log_entry["speaker_model"] == model_a_slug else persona_b
-                        if len(speaker_label) > 20: speaker_label = speaker_label[:20] + "..."
-                        st.markdown(f"**{speaker_label}** ({log_entry['speaker_model']})")
-                        st.write(log_entry["content"])
-                
-                time.sleep(0.1)
+        try:
+            with st.spinner("Agents are conversing..."):
+                for log_entry in orchestrator.run_simulation(num_turns, initial_message=initial_message): 
+                    # Accumulate tokens
+                    total_tokens += log_entry["output_tokens"]
+                    
+                    # Determine label and avatar
+                    is_agent_a = log_entry["speaker_model"] == model_a_slug
+                    speaker_label = persona_a if is_agent_a else persona_b
+                    avatar = "🎭" if is_agent_a else "🍸"
+                    
+                    if len(speaker_label) > 50: speaker_label = speaker_label[:47] + "..."
+                    
+                    # Display Message
+                    with chat_container:
+                        # Use the speaker persona as the name for the chat message
+                        with st.chat_message(name=speaker_label, avatar=avatar):
+                            st.write(log_entry["content"])
+                        
+                        # Metadata OUTSIDE and BELOW the bubble for a cleaner look
+                        st.markdown(
+                            f"<div style='text-align: right; margin-top: -15px; margin-bottom: 10px;'>"
+                            f"<span style='color: gray; font-size: 0.8rem;'>"
+                            f"⏱️ {log_entry['latency_ms']:.0f}ms | 🔢 {log_entry['output_tokens']} tokens | 🤖 {log_entry['speaker_model']}"
+                            f"</span></div>", 
+                            unsafe_allow_html=True
+                        )
+                    
+                    time.sleep(0.1)
+            
+            st.success(f"Simulation Complete. Total Tokens: {total_tokens}")
+            
+        except Exception as e:
+            st.error(f"❌ Simulation Error: {str(e)}")
+            st.info("💡 Tip: Try increasing 'Max Tokens' if the API is failing with low values.")
                 
         # Save logs
         jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
@@ -209,23 +189,42 @@ with tab4:
     st.header("🧠 Stylometric Analysis (NLTK)")
     
     # --- Custom Lexicon Input ---
-    st.subheader("Custom Word Frequency (LIWC-style)")
-    st.markdown("Define categories and words to count. Format: `Category: word1, word2`")
+    st.subheader("🏷️ Custom Lexicon Configuration")
+    st.markdown("Define specific word categories to track during the conversation.")
     
-    default_lexicon = """Positive: love, great, happy, good
-Negative: hate, bad, sad, terrible
-Hesitation: um, uh, er, maybe, perhaps"""
+    # Initialize session state for lexicon if not exists
+    if "custom_lexicon" not in st.session_state:
+        st.session_state["custom_lexicon"] = [
+            {"category": "Positive", "words": "love, great, happy, good"},
+            {"category": "Negative", "words": "hate, bad, sad, terrible"},
+            {"category": "Hesitation", "words": "um, uh, er, maybe, perhaps"}
+        ]
+
+    # UI for editing Lexicon
+    for i, item in enumerate(st.session_state["custom_lexicon"]):
+        lex_col1, lex_col2, lex_col3 = st.columns([1, 2, 0.2])
+        with lex_col1:
+            item["category"] = st.text_input(f"Category Name {i}", item["category"], key=f"lex_cat_{i}", placeholder="Category", label_visibility="collapsed")
+        with lex_col2:
+            item["words"] = st.text_input(f"Words {i}", item["words"], key=f"lex_words_{i}", placeholder="words, separated, by, commas", label_visibility="collapsed")
+        with lex_col3:
+            if st.button("🗑️", key=f"lex_del_{i}", help="Remove category"):
+                st.session_state["custom_lexicon"].pop(i)
+                st.rerun()
     
-    lexicon_input = st.text_area("Define Custom Lexicon", default_lexicon, height=100)
+    if st.button("➕ Add New Category"):
+        st.session_state["custom_lexicon"].append({"category": "", "words": ""})
+        st.rerun()
+
+    # Convert to the dictionary format expected by processing functions
+    category_dict = {
+        item["category"].strip(): [w.strip() for w in item["words"].split(',') if w.strip()]
+        for item in st.session_state["custom_lexicon"]
+        if item["category"].strip()
+    }
     
-    category_dict = {}
-    if lexicon_input:
-        for line in lexicon_input.split('\n'):
-            if ':' in line:
-                cat, words = line.split(':', 1)
-                category_dict[cat.strip()] = [w.strip() for w in words.split(',')]
-    
-    if st.button("Run Analysis", type="primary"):
+    st.markdown("---")
+    if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
         jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
         if os.path.exists(jsonl_path):
             with st.spinner("Processing text..."):

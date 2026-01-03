@@ -190,35 +190,6 @@ class Orchestrator:
             "system_prompt_snapshot": speaker.system_prompt
         }
 
-    def _log_turn(self, turn_id: int, speaker: Agent, responder: Agent, response_data: Dict[str, Any]):
-        """
-        Deprecated: Use _create_log_entry and yield instead.
-        Kept for backward compatibility if needed, but internal logic uses _create_log_entry.
-        """
-        pass
-
-
-    def _log_turn(self, turn_id: int, speaker: Agent, responder: Agent, response_data: Dict[str, Any]):
-        """
-        Logs a single turn of the conversation.
-        """
-        log_entry = {
-            "experiment_id": self.experiment_id,
-            "turn_id": turn_id,
-            "scenario": self.scenario_name,
-            "speaker_model": speaker.model_slug,
-            "responder_model": responder.model_slug,
-            "timestamp": datetime.utcnow().isoformat(),
-            "latency_ms": response_data["latency_ms"],
-            "input_tokens": response_data["input_tokens"],
-            "output_tokens": response_data["output_tokens"],
-            "content": response_data["content"],
-            "finish_reason": response_data["finish_reason"],
-            "is_refusal": response_data["is_refusal"],
-            "system_prompt_snapshot": speaker.system_prompt
-        }
-        self.logs.append(log_entry)
-
     def save_logs(self, filepath: str):
         """
         Saves the accumulated logs to a JSONL file.
