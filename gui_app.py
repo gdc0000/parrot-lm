@@ -82,7 +82,7 @@ with tab1:
     st.markdown("---")
     initial_message = st.text_input("The conversation starts with:", "Is this seat taken?")
     
-    if st.button("🚀 Start Realistic Simulation", type="primary", use_container_width=True):
+    if st.button("🚀 Start Conversation", type="primary", use_container_width=True):
         st.write("### 🟢 Live Conversation")
         
         # Hidden System Prompt Generation
