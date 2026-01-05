@@ -97,12 +97,12 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("#### Chatbot A")
-        model_a_slug = st.text_input("Model A Slug", "x-ai/grok-beta", key="model_a")
+        model_a_slug = st.text_input("Model A Slug", "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", key="model_a")
         persona_a = st.text_area("Persona", "A mysterious stranger at a jazz club", height=100)
 
     with col2:
         st.markdown("#### Chatbot B")
-        model_b_slug = st.text_input("Model B Slug", "meta-llama/llama-3-70b-instruct", key="model_b")
+        model_b_slug = st.text_input("Model B Slug", "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", key="model_b")
         persona_b = st.text_area("Persona", "A sharp-witted bartender", height=100)
 
     st.markdown("---")
