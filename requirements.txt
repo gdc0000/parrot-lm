@@ -5,3 +5,4 @@ tenacity>=8.0.0
 streamlit
 plotly>=5.18.0
 nltk
+streamlit-local-storage

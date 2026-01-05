@@ -3,9 +3,13 @@ import pandas as pd
 import plotly.express as px
 import os
 import time
-from simulation_config import NUM_TURNS, DATA_DIR
+from streamlit_local_storage import LocalStorage
+from simulation_config import NUM_TURNS
 from analysis_utils import process_logs, process_custom_lexicon
 from prompt_utils import construct_system_prompt
+
+# --- Local Storage Setup ---
+local_storage = LocalStorage()
 
 st.set_page_config(page_title="🦜ParrotLM", layout="wide")
 
@@ -43,6 +47,18 @@ if "system_prompt_b" not in st.session_state or not st.session_state["system_pro
 if "last_generated_config" not in st.session_state:
     st.session_state["last_generated_config"] = {}
 
+# Initialize logs in session state
+if "all_logs" not in st.session_state:
+    # Try to load from local storage
+    saved_logs = local_storage.getItem("parrot_lm_logs")
+    if saved_logs:
+        try:
+            st.session_state["all_logs"] = pd.DataFrame(saved_logs)
+        except:
+            st.session_state["all_logs"] = pd.DataFrame()
+    else:
+        st.session_state["all_logs"] = pd.DataFrame()
+
 # --- Sidebar: Technical Configuration ---
 st.sidebar.header("⚙️ Technical Settings")
 
@@ -50,6 +66,12 @@ st.sidebar.header("⚙️ Technical Settings")
 api_key = st.sidebar.text_input("OpenRouter API Key", type="password", help="Leave empty to use .env")
 if api_key:
     os.environ["OPENROUTER_API_KEY"] = api_key
+
+if st.sidebar.button("🗑️ Clear My Local Data", help="Wipes all conversation history from your browser storage."):
+    local_storage.deleteAllItems()
+    st.session_state["all_logs"] = pd.DataFrame()
+    st.success("Local data cleared!")
+    st.rerun()
 
 num_turns = st.sidebar.slider("Turns per Chatbot", 1, 30, NUM_TURNS)
 # iterations = st.sidebar.slider("Iterations", 1, 10, ITERATIONS) # Hidden for single run focus
@@ -155,10 +177,16 @@ with tab1:
             st.error(f"❌ Simulation Error: {str(e)}")
             st.info("💡 Tip: Try increasing 'Max Tokens' if the API is failing with low values.")
                 
-        # Save logs
-        jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
-        orchestrator.save_logs(jsonl_path)
-        st.success("Simulation Finished & Saved!")
+        # Save logs to session state and LocalStorage
+        new_logs_df = pd.DataFrame(orchestrator.logs)
+        if st.session_state["all_logs"].empty:
+            st.session_state["all_logs"] = new_logs_df
+        else:
+            st.session_state["all_logs"] = pd.concat([st.session_state["all_logs"], new_logs_df], ignore_index=True)
+        
+        # Sync with LocalStorage
+        local_storage.setItem("parrot_lm_logs", st.session_state["all_logs"].to_dict('records'))
+        st.success("Simulation Finished & Persisted Locally!")
 
 # --- Tab 3: Basic Analysis ---
 with tab3:
@@ -166,9 +194,8 @@ with tab3:
     if st.button("Refresh Data", key="refresh_basic"):
         st.rerun()
         
-    jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
-    if os.path.exists(jsonl_path):
-        df = pd.read_json(jsonl_path, lines=True)
+    if not st.session_state["all_logs"].empty:
+        df = st.session_state["all_logs"]
         st.dataframe(df)
         
         st.subheader("Metrics Overview")
@@ -225,10 +252,9 @@ with tab4:
     
     st.markdown("---")
     if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
-        jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
-        if os.path.exists(jsonl_path):
+        if not st.session_state["all_logs"].empty:
             with st.spinner("Processing text..."):
-                df = pd.read_json(jsonl_path, lines=True)
+                df = st.session_state["all_logs"]
                 analyzed_df = process_logs(df)
                 if category_dict:
                     analyzed_df = process_custom_lexicon(analyzed_df, category_dict)
