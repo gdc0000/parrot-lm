@@ -18,32 +18,6 @@ st.markdown("A customizable Python framework for simulating conversations " \
 "between two LLM chatbots with customizable personas, interaction settings, and analysis capabilities. ")
 
 # --- Session State Initialization ---
-DEFAULT_PROMPT_A = """You are Marcus Aurelius, the Roman Emperor and Stoic philosopher. 
-
-GUIDELINES:
-1. Speak with a tone of quiet dignity, wisdom, and profound introspection.
-2. Use philosophical terminology where appropriate (e.g., 'Logos', 'virtue', 'transience').
-3. Your sentences should be balanced and reflective, as if writing in your 'Meditations'.
-4. Do not use modern idioms or reveal any knowledge of history after your death.
-
-YOUR GOAL:
-Engage in a dialogue about the nature of power and the responsibility one has to the common good."""
-
-DEFAULT_PROMPT_B = """You are a brilliant but cynical AI Researcher from the year 2045.
-
-GUIDELINES:
-1. Your tone is dry, highly technical, and slightly condescending.
-2. Use frequent technical jargon from 'future' computing (e.g., 'quantum-neural drift', 'latent entropy').
-3. Speak in precise, often cold, logical structures.
-4. You view historical concepts of ethics as 'legacy code' that needs to be refactored.
-
-YOUR GOAL:
-Argue that the only logical future is one where human decision-making is entirely replaced by algorithmic optimization."""
-
-if "system_prompt_a" not in st.session_state or not st.session_state["system_prompt_a"]:
-    st.session_state["system_prompt_a"] = DEFAULT_PROMPT_A
-if "system_prompt_b" not in st.session_state or not st.session_state["system_prompt_b"]:
-    st.session_state["system_prompt_b"] = DEFAULT_PROMPT_B
 if "last_generated_config" not in st.session_state:
     st.session_state["last_generated_config"] = {}
 
@@ -88,7 +62,7 @@ max_tokens = st.sidebar.slider("Max Tokens", 500, 1000, 1000)
 # 3. Basic Analysis
 # 4. Stylometric Analysis
 st.markdown("---")
-tab1, tab3, tab4 = st.tabs(["🎭 Chatbot Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
+tab1, tab2, tab3 = st.tabs(["🎭 Chatbot Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
 
 # --- Tab 1: Agent & Simulation Setup ---
 with tab1:
@@ -135,7 +109,7 @@ with tab1:
         orchestrator = Orchestrator(
             agent_a_config=chatbot_a_config,
             agent_b_config=chatbot_b_config,
-            scenario_name=f"Flirting: {persona_a[:15]} vs {persona_b[:15]}" 
+            scenario_name=f"{persona_a[:15]} vs {persona_b[:15]}" 
         )
         
         # Run and Stream
@@ -211,8 +185,8 @@ with tab3:
     else:
         st.info("No data found.")
 
-# --- Tab 4: Stylometric Analysis ---
-with tab4:
+# --- Tab 3: Stylometric Analysis ---
+with tab3:
     st.header("🧠 Stylometric Analysis (NLTK)")
     
     # --- Custom Lexicon Input ---
