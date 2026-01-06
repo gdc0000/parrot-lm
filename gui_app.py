@@ -57,10 +57,9 @@ max_tokens = st.sidebar.slider("Max Tokens", 500, 1000, 1000)
 
 # --- Tabs: Main Structure ---
 # New tab structure:
-# 1. Agent Setup
-# 2. Interaction & Prompts (includes Start Simulation button)
-# 3. Basic Analysis
-# 4. Stylometric Analysis
+# 1. Chatbot Setup (includes interaction and simulation button)
+# 2. Basic Analysis
+# 3. Stylometric Analysis
 st.markdown("---")
 tab1, tab2, tab3 = st.tabs(["🎭 Chatbot Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
 
@@ -162,8 +161,8 @@ with tab1:
         local_storage.setItem("parrot_lm_logs", st.session_state["all_logs"].to_dict('records'))
         st.success("Simulation Finished & Persisted Locally!")
 
-# --- Tab 3: Basic Analysis ---
-with tab3:
+# --- Tab 2: Basic Analysis ---
+with tab2:
     st.header("Basic Data Analysis")
     if st.button("Refresh Data", key="refresh_basic"):
         st.rerun()
