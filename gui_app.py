@@ -53,7 +53,7 @@ num_turns = st.sidebar.slider("Turns per Chatbot", 1, 100, NUM_TURNS, help="The 
 st.sidebar.markdown("### Model Parameters")
 temp_a = st.sidebar.slider("Chatbot A Temperature", 0.0, 2.0, 1.0, 0.1, help="Controls 'creativity.' Higher values (like 1.5) make the character more unpredictable/vibrant, while lower values (0.5) make them more literal and focused.")
 temp_b = st.sidebar.slider("Chatbot B Temperature", 0.0, 2.0, 1.0, 0.1)
-max_tokens = st.sidebar.slider("Max Tokens", 100, 4000, 1000, help="The maximum length of a single response. Increase this if responses feel cut off.")
+max_tokens = st.sidebar.slider("Max Tokens", 100, 4000, 1000, help="The maximum length of a session. Increase this if responses feel cut off.")
 context_window = st.sidebar.slider("Context Window (Turns)", 1, 50, 20, help="🧠 **Short-Term Memory**: This controls how many previous messages the chatbot 'remembers' at once. \n\nIf the conversation is very long, the models will 'forget' the beginning to make room for new messages. Keeping this around 20-30 prevents technical errors in long simulations.")
 
 # --- Tabs: Main Structure ---
