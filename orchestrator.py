@@ -111,6 +111,10 @@ class Orchestrator:
             system_prompt=agent_b_config["system_prompt"],
             name="Agent B"
         )
+
+        # Store user-facing persona snapshots for clean exports
+        self.persona_a_snapshot = agent_a_config.get("user_persona_snapshot", self.agent_a.system_prompt)
+        self.persona_b_snapshot = agent_b_config.get("user_persona_snapshot", self.agent_b.system_prompt)
         
         # Store advanced params if present, else default
         self.agent_a_params = agent_a_config.get("params", {})
@@ -187,7 +191,7 @@ class Orchestrator:
             "content": response_data["content"],
             "finish_reason": response_data["finish_reason"],
             "is_refusal": response_data["is_refusal"],
-            "system_prompt_snapshot": speaker.system_prompt
+            "system_prompt_snapshot": self.persona_a_snapshot if speaker.name == "Agent A" else self.persona_b_snapshot
         }
 
     def save_logs(self, filepath: str):

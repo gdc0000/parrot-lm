@@ -97,11 +97,13 @@ with tab1:
         chatbot_a_config = {
             "model": model_a_slug,
             "system_prompt": system_prompt_a,
+            "user_persona_snapshot": persona_a,
             "params": {"temperature": temp_a, "max_tokens": max_tokens}
         }
         chatbot_b_config = {
             "model": model_b_slug,
             "system_prompt": system_prompt_b,
+            "user_persona_snapshot": persona_b,
             "params": {"temperature": temp_b, "max_tokens": max_tokens}
         }
         
