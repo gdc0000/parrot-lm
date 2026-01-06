@@ -37,7 +37,7 @@ if "all_logs" not in st.session_state:
 st.sidebar.header("⚙️ Technical Settings")
 
 # API Key
-api_key = st.sidebar.text_input("OpenRouter API Key", type="password", help="Leave empty to use .env")
+api_key = st.sidebar.text_input("OpenRouter API Key", type="password")
 if api_key:
     os.environ["OPENROUTER_API_KEY"] = api_key
 
@@ -47,14 +47,14 @@ if st.sidebar.button("🗑️ Clear My Local Data", help="Wipes all conversation
     st.success("Local data cleared!")
     st.rerun()
 
-num_turns = st.sidebar.slider("Turns per Chatbot", 1, 100, NUM_TURNS)
+num_turns = st.sidebar.slider("Turns per Chatbot", 1, 100, NUM_TURNS, help="The number of times each chatbot will speak. Total messages = Turns * 2.")
 # iterations = st.sidebar.slider("Iterations", 1, 10, ITERATIONS) # Hidden for single run focus
 
 st.sidebar.markdown("### Model Parameters")
-temp_a = st.sidebar.slider("Chatbot A Temperature", 0.0, 2.0, 1.0, 0.1)
+temp_a = st.sidebar.slider("Chatbot A Temperature", 0.0, 2.0, 1.0, 0.1, help="Controls 'creativity.' Higher values (like 1.5) make the character more unpredictable/vibrant, while lower values (0.5) make them more literal and focused.")
 temp_b = st.sidebar.slider("Chatbot B Temperature", 0.0, 2.0, 1.0, 0.1)
-max_tokens = st.sidebar.slider("Max Tokens", 100, 4000, 1000)
-context_window = st.sidebar.slider("Context Window (Turns)", 1, 50, 20, help="How many recent conversation turns to keep in context. Smaller values save tokens.")
+max_tokens = st.sidebar.slider("Max Tokens", 100, 4000, 1000, help="The maximum length of a single response. Increase this if responses feel cut off.")
+context_window = st.sidebar.slider("Context Window (Turns)", 1, 50, 20, help="🧠 **Short-Term Memory**: This controls how many previous messages the chatbot 'remembers' at once. \n\nIf the conversation is very long, the models will 'forget' the beginning to make room for new messages. Keeping this around 20-30 prevents technical errors in long simulations.")
 
 # --- Tabs: Main Structure ---
 # New tab structure:
