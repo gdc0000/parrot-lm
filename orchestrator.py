@@ -21,10 +21,11 @@ class Agent:
     """
     Represents a single LLM agent in the simulation.
     """
-    def __init__(self, model_slug: str, system_prompt: str, name: str):
+    def __init__(self, model_slug: str, system_prompt: str, name: str, max_history_turns: int = 20):
         self.model_slug = model_slug
         self.system_prompt = system_prompt
         self.name = name
+        self.max_history_turns = max_history_turns
         self.history: List[Dict[str, str]] = [
             {"role": "system", "content": system_prompt}
         ]
@@ -52,11 +53,22 @@ class Agent:
         # Add user input to history
         self.history.append({"role": "user", "content": input_text})
         
+        # Prepare messages: Keep system prompt + last N messages
+        # One turn has 2 messages (user + assistant)
+        max_messages = self.max_history_turns * 2
+        
+        # history[0] is always system. Everything else follows.
+        relevant_history = self.history[1:]
+        if len(relevant_history) > max_messages:
+            relevant_history = relevant_history[-max_messages:]
+            
+        messages = [{"role": "system", "content": self.system_prompt}] + relevant_history
+        
         start_time = time.time()
         try:
             response = self.client.chat.completions.create(
                 model=self.model_slug,
-                messages=self.history,
+                messages=messages,
                 **kwargs
             )
 
@@ -100,16 +112,20 @@ class Orchestrator:
         self.experiment_id = experiment_id or str(uuid.uuid4())
         self.scenario_name = scenario_name
         
+        max_history_turns = agent_a_config.get("max_history_turns", 20)
+        
         # Initialize agents with full config
         self.agent_a = Agent(
             model_slug=agent_a_config["model"],
             system_prompt=agent_a_config["system_prompt"],
-            name="Agent A"
+            name="Agent A",
+            max_history_turns=max_history_turns
         )
         self.agent_b = Agent(
             model_slug=agent_b_config["model"],
             system_prompt=agent_b_config["system_prompt"],
-            name="Agent B"
+            name="Agent B",
+            max_history_turns=max_history_turns
         )
 
         # Store user-facing persona snapshots for clean exports

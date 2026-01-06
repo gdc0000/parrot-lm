@@ -53,7 +53,8 @@ num_turns = st.sidebar.slider("Turns per Chatbot", 1, 100, NUM_TURNS)
 st.sidebar.markdown("### Model Parameters")
 temp_a = st.sidebar.slider("Chatbot A Temperature", 0.0, 2.0, 1.0, 0.1)
 temp_b = st.sidebar.slider("Chatbot B Temperature", 0.0, 2.0, 1.0, 0.1)
-max_tokens = st.sidebar.slider("Max Tokens", 500, 1000, 1000)
+max_tokens = st.sidebar.slider("Max Tokens", 100, 4000, 1000)
+context_window = st.sidebar.slider("Context Window (Turns)", 1, 50, 20, help="How many recent conversation turns to keep in context. Smaller values save tokens.")
 
 # --- Tabs: Main Structure ---
 # New tab structure:
@@ -98,12 +99,14 @@ with tab1:
             "model": model_a_slug,
             "system_prompt": system_prompt_a,
             "user_persona_snapshot": persona_a,
+            "max_history_turns": context_window,
             "params": {"temperature": temp_a, "max_tokens": max_tokens}
         }
         chatbot_b_config = {
             "model": model_b_slug,
             "system_prompt": system_prompt_b,
             "user_persona_snapshot": persona_b,
+            "max_history_turns": context_window,
             "params": {"temperature": temp_b, "max_tokens": max_tokens}
         }
         
