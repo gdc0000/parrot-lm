@@ -47,7 +47,7 @@ if st.sidebar.button("🗑️ Clear My Local Data", help="Wipes all conversation
     st.success("Local data cleared!")
     st.rerun()
 
-num_turns = st.sidebar.slider("Turns per Chatbot", 1, 30, NUM_TURNS)
+num_turns = st.sidebar.slider("Turns per Chatbot", 1, 100, NUM_TURNS)
 # iterations = st.sidebar.slider("Iterations", 1, 10, ITERATIONS) # Hidden for single run focus
 
 st.sidebar.markdown("### Model Parameters")
