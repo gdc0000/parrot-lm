@@ -3,9 +3,13 @@ import pandas as pd
 import plotly.express as px
 import os
 import time
-from simulation_config import NUM_TURNS, DATA_DIR
+from streamlit_local_storage import LocalStorage
+from simulation_config import NUM_TURNS
 from analysis_utils import process_logs, process_custom_lexicon
 from prompt_utils import construct_system_prompt
+
+# --- Local Storage Setup ---
+local_storage = LocalStorage()
 
 st.set_page_config(page_title="🦜ParrotLM", layout="wide")
 
@@ -14,59 +18,51 @@ st.markdown("A customizable Python framework for simulating conversations " \
 "between two LLM chatbots with customizable personas, interaction settings, and analysis capabilities. ")
 
 # --- Session State Initialization ---
-DEFAULT_PROMPT_A = """You are Marcus Aurelius, the Roman Emperor and Stoic philosopher. 
-
-GUIDELINES:
-1. Speak with a tone of quiet dignity, wisdom, and profound introspection.
-2. Use philosophical terminology where appropriate (e.g., 'Logos', 'virtue', 'transience').
-3. Your sentences should be balanced and reflective, as if writing in your 'Meditations'.
-4. Do not use modern idioms or reveal any knowledge of history after your death.
-
-YOUR GOAL:
-Engage in a dialogue about the nature of power and the responsibility one has to the common good."""
-
-DEFAULT_PROMPT_B = """You are a brilliant but cynical AI Researcher from the year 2045.
-
-GUIDELINES:
-1. Your tone is dry, highly technical, and slightly condescending.
-2. Use frequent technical jargon from 'future' computing (e.g., 'quantum-neural drift', 'latent entropy').
-3. Speak in precise, often cold, logical structures.
-4. You view historical concepts of ethics as 'legacy code' that needs to be refactored.
-
-YOUR GOAL:
-Argue that the only logical future is one where human decision-making is entirely replaced by algorithmic optimization."""
-
-if "system_prompt_a" not in st.session_state or not st.session_state["system_prompt_a"]:
-    st.session_state["system_prompt_a"] = DEFAULT_PROMPT_A
-if "system_prompt_b" not in st.session_state or not st.session_state["system_prompt_b"]:
-    st.session_state["system_prompt_b"] = DEFAULT_PROMPT_B
 if "last_generated_config" not in st.session_state:
     st.session_state["last_generated_config"] = {}
+
+# Initialize logs in session state
+if "all_logs" not in st.session_state:
+    # Try to load from local storage
+    saved_logs = local_storage.getItem("parrot_lm_logs")
+    if saved_logs:
+        try:
+            st.session_state["all_logs"] = pd.DataFrame(saved_logs)
+        except:
+            st.session_state["all_logs"] = pd.DataFrame()
+    else:
+        st.session_state["all_logs"] = pd.DataFrame()
 
 # --- Sidebar: Technical Configuration ---
 st.sidebar.header("⚙️ Technical Settings")
 
 # API Key
-api_key = st.sidebar.text_input("OpenRouter API Key", type="password", help="Leave empty to use .env")
+api_key = st.sidebar.text_input("OpenRouter API Key", type="password")
 if api_key:
     os.environ["OPENROUTER_API_KEY"] = api_key
 
-num_turns = st.sidebar.slider("Turns per Chatbot", 1, 30, NUM_TURNS)
+if st.sidebar.button("🗑️ Clear My Local Data", help="Wipes all conversation history from your browser storage."):
+    local_storage.deleteAllItems()
+    st.session_state["all_logs"] = pd.DataFrame()
+    st.success("Local data cleared!")
+    st.rerun()
+
+num_turns = st.sidebar.slider("Turns per Chatbot", 1, 100, NUM_TURNS, help="The number of times each chatbot will speak. Total messages = Turns * 2.")
 # iterations = st.sidebar.slider("Iterations", 1, 10, ITERATIONS) # Hidden for single run focus
 
 st.sidebar.markdown("### Model Parameters")
-temp_a = st.sidebar.slider("Chatbot A Temperature", 0.0, 2.0, 1.0, 0.1)
+temp_a = st.sidebar.slider("Chatbot A Temperature", 0.0, 2.0, 1.0, 0.1, help="Controls 'creativity.' Higher values (like 1.5) make the character more unpredictable/vibrant, while lower values (0.5) make them more literal and focused.")
 temp_b = st.sidebar.slider("Chatbot B Temperature", 0.0, 2.0, 1.0, 0.1)
-max_tokens = st.sidebar.slider("Max Tokens", 500, 1000, 1000)
+max_tokens = st.sidebar.slider("Max Tokens", 100, 4000, 1000, help="The maximum length of a single response. Increase this if responses feel cut off.")
+context_window = st.sidebar.slider("Context Window (Turns)", 1, 50, 20, help="🧠 **Short-Term Memory**: This controls how many previous messages the chatbot 'remembers' at once. \n\nIf the conversation is very long, the models will 'forget' the beginning to make room for new messages. Keeping this around 20-30 prevents technical errors in long simulations.")
 
 # --- Tabs: Main Structure ---
 # New tab structure:
-# 1. Agent Setup
-# 2. Interaction & Prompts (includes Start Simulation button)
-# 3. Basic Analysis
-# 4. Stylometric Analysis
+# 1. Chatbot Setup (includes interaction and simulation button)
+# 2. Basic Analysis
+# 3. Stylometric Analysis
 st.markdown("---")
-tab1, tab3, tab4 = st.tabs(["🎭 Chatbot Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
+tab1, tab2, tab3 = st.tabs(["🎭 Chatbot Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
 
 # --- Tab 1: Agent & Simulation Setup ---
 with tab1:
@@ -75,18 +71,18 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("#### Chatbot A")
-        model_a_slug = st.text_input("Model A Slug", "x-ai/grok-beta", key="model_a")
+        model_a_slug = st.text_input("Model A Slug", "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", key="model_a")
         persona_a = st.text_area("Persona", "A mysterious stranger at a jazz club", height=100)
 
     with col2:
         st.markdown("#### Chatbot B")
-        model_b_slug = st.text_input("Model B Slug", "meta-llama/llama-3-70b-instruct", key="model_b")
+        model_b_slug = st.text_input("Model B Slug", "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", key="model_b")
         persona_b = st.text_area("Persona", "A sharp-witted bartender", height=100)
 
     st.markdown("---")
     initial_message = st.text_input("The conversation starts with:", "Is this seat taken?")
     
-    if st.button("🚀 Start Realistic Simulation", type="primary", use_container_width=True):
+    if st.button("🚀 Start Conversation", type="primary", use_container_width=True):
         st.write("### 🟢 Live Conversation")
         
         # Hidden System Prompt Generation
@@ -102,18 +98,22 @@ with tab1:
         chatbot_a_config = {
             "model": model_a_slug,
             "system_prompt": system_prompt_a,
+            "user_persona_snapshot": persona_a,
+            "max_history_turns": context_window,
             "params": {"temperature": temp_a, "max_tokens": max_tokens}
         }
         chatbot_b_config = {
             "model": model_b_slug,
             "system_prompt": system_prompt_b,
+            "user_persona_snapshot": persona_b,
+            "max_history_turns": context_window,
             "params": {"temperature": temp_b, "max_tokens": max_tokens}
         }
         
         orchestrator = Orchestrator(
             agent_a_config=chatbot_a_config,
             agent_b_config=chatbot_b_config,
-            scenario_name=f"Flirting: {persona_a[:15]} vs {persona_b[:15]}" 
+            scenario_name=f"{persona_a[:15]} vs {persona_b[:15]}" 
         )
         
         # Run and Stream
@@ -155,20 +155,25 @@ with tab1:
             st.error(f"❌ Simulation Error: {str(e)}")
             st.info("💡 Tip: Try increasing 'Max Tokens' if the API is failing with low values.")
                 
-        # Save logs
-        jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
-        orchestrator.save_logs(jsonl_path)
-        st.success("Simulation Finished & Saved!")
+        # Save logs to session state and LocalStorage
+        new_logs_df = pd.DataFrame(orchestrator.logs)
+        if st.session_state["all_logs"].empty:
+            st.session_state["all_logs"] = new_logs_df
+        else:
+            st.session_state["all_logs"] = pd.concat([st.session_state["all_logs"], new_logs_df], ignore_index=True)
+        
+        # Sync with LocalStorage
+        local_storage.setItem("parrot_lm_logs", st.session_state["all_logs"].to_dict('records'))
+        st.success("Simulation Finished & Persisted Locally!")
 
-# --- Tab 3: Basic Analysis ---
-with tab3:
+# --- Tab 2: Basic Analysis ---
+with tab2:
     st.header("Basic Data Analysis")
     if st.button("Refresh Data", key="refresh_basic"):
         st.rerun()
         
-    jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
-    if os.path.exists(jsonl_path):
-        df = pd.read_json(jsonl_path, lines=True)
+    if not st.session_state["all_logs"].empty:
+        df = st.session_state["all_logs"]
         st.dataframe(df)
         
         st.subheader("Metrics Overview")
@@ -184,8 +189,8 @@ with tab3:
     else:
         st.info("No data found.")
 
-# --- Tab 4: Stylometric Analysis ---
-with tab4:
+# --- Tab 3: Stylometric Analysis ---
+with tab3:
     st.header("🧠 Stylometric Analysis (NLTK)")
     
     # --- Custom Lexicon Input ---
@@ -225,10 +230,9 @@ with tab4:
     
     st.markdown("---")
     if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
-        jsonl_path = os.path.join(DATA_DIR, "experiment_log.jsonl")
-        if os.path.exists(jsonl_path):
+        if not st.session_state["all_logs"].empty:
             with st.spinner("Processing text..."):
-                df = pd.read_json(jsonl_path, lines=True)
+                df = st.session_state["all_logs"]
                 analyzed_df = process_logs(df)
                 if category_dict:
                     analyzed_df = process_custom_lexicon(analyzed_df, category_dict)
