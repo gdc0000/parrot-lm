@@ -5,4 +5,7 @@ tenacity>=8.0.0
 streamlit
 plotly>=5.18.0
 nltk
-streamlit-local-storage
+altair>=5.0.0
+vega-datasets
+jinja2
+numpy>=1.21.0
