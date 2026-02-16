@@ -9,3 +9,4 @@ vega-datasets
 jinja2
 numpy>=1.21.0
 streamlit_local_storage
+openai
