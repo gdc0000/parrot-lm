@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
@@ -42,7 +42,7 @@ if api_key:
     os.environ["OPENROUTER_API_KEY"] = api_key
 
 if st.sidebar.button("🗑️ Clear My Local Data", help="Wipes all conversation history from your browser storage."):
-    local_storage.deleteAllItems()
+    local_storage.deleteItem("parrot_lm_logs")
     st.session_state["all_logs"] = pd.DataFrame()
     st.success("Local data cleared!")
     st.rerun()
@@ -271,3 +271,4 @@ with tab3:
                     st.plotly_chart(fig_lex, use_container_width=True)
         else:
             st.warning("No data found.")
+
