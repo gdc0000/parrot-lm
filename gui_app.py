@@ -4,9 +4,9 @@ import plotly.express as px
 import os
 import time
 from streamlit_local_storage import LocalStorage
-from simulation_config import NUM_TURNS
-from analysis_utils import process_logs, process_custom_lexicon
-from prompt_utils import construct_system_prompt
+from parrotlm.simulation_config import NUM_TURNS
+from parrotlm.analysis_utils import process_logs, process_custom_lexicon
+from parrotlm.prompt_utils import construct_system_prompt
 
 # --- Local Storage Setup ---
 local_storage = LocalStorage()
@@ -93,7 +93,7 @@ with tab1:
         chat_container = st.container()
         
         # Initialize Orchestrator
-        from orchestrator import Orchestrator
+        from parrotlm.orchestrator import Orchestrator
         
         chatbot_a_config = {
             "model": model_a_slug,

@@ -1,118 +1,117 @@
-# ParrotLM Framework Module Map
+﻿# ParrotLM Framework Module Map
 
 ## Overview
-ParrotLM is a Python framework for simulating conversations between two LLM agents with customizable personas, interaction settings, and analysis capabilities. It uses Streamlit for the GUI, OpenRouter/OpenAI API for LLM calls, spaCy for stylometric analysis, and Pandas/Plotly for data visualization and metrics.
+ParrotLM simula conversazioni tra due agenti LLM con interfaccia Streamlit, generazione prompt personalizzati e analisi testuale. Le chiamate LLM passano tramite client OpenAI puntato a OpenRouter. L'analisi stilometrica usa NLTK (non spaCy).
 
-The core modules are:
-- Configuration: [`simulation_config.py`](simulation_config.py)
-- Prompt generation: [`prompt_utils.py`](prompt_utils.py)
-- Text analysis: [`analysis_utils.py`](analysis_utils.py)
-- Simulation engine: [`orchestrator.py`](orchestrator.py)
-- GUI application: [`gui_app.py`](gui_app.py)
+Moduli principali:
+- Configurazione: [`parrotlm/simulation_config.py`](parrotlm/simulation_config.py)
+- Prompt generation: [`parrotlm/prompt_utils.py`](parrotlm/prompt_utils.py)
+- Text analysis: [`parrotlm/analysis_utils.py`](parrotlm/analysis_utils.py)
+- Simulation engine: [`parrotlm/orchestrator.py`](parrotlm/orchestrator.py)
+- GUI: [`gui_app.py`](gui_app.py)
 
-Data flow: User configures via GUI → Prompts & configs → Orchestrator runs simulation → Logs saved to JSONL → GUI loads & analyzes logs.
+Data flow reale:
+- Utente configura dalla GUI.
+- La GUI crea i system prompt e inizializza l'orchestrator.
+- L'orchestrator produce log per ogni messaggio.
+- La GUI salva i log in `st.session_state` + browser local storage.
+- Tab analisi elabora i log in memoria.
+- `save_logs()` JSONL esiste ma non e usato dalla GUI corrente.
 
 ## Module Details
 
-### [`simulation_config.py`](simulation_config.py)
-**Purpose**: Defines constants for models, scenarios, and simulation parameters.
+### [`parrotlm/simulation_config.py`](parrotlm/simulation_config.py)
+**Purpose**: Costanti base della simulazione.
 
-**Key Exports**:
-- `MODELS_BY_SIZE`: Dict of model categories and OpenRouter slugs.
-- `SCENARIOS`: Dict of scenario prompts (unused in current code).
-- `NUM_TURNS = 10`: Turns per agent.
-- `ITERATIONS = 3`: Repeat count (unused in GUI).
-- `DATA_DIR = "data"`: Log output directory.
+**Key exports**:
+- `NUM_TURNS = 10`
+- `DATA_DIR = "data"`
 
-**Dependencies**: None.
+**Notes**:
+- Non contiene `MODELS_BY_SIZE`, `SCENARIOS`, `ITERATIONS`.
 
-### [`prompt_utils.py`](prompt_utils.py)
-**Purpose**: Dynamically constructs system prompts based on interaction setting and persona.
+### [`parrotlm/prompt_utils.py`](parrotlm/prompt_utils.py)
+**Purpose**: Costruzione del system prompt da persona testuale.
 
-**Key Exports**:
-- `construct_system_prompt(scenario_type, persona, custom_instructions="")`: Returns tailored system prompt.
+**Key exports**:
+- `construct_system_prompt(persona)`
 
-**Dependencies**: None.
+**Usage**:
+- Chiamata in [`gui_app.py`](gui_app.py:89) e [`gui_app.py`](gui_app.py:90).
 
-**Usage**: Called in [`gui_app.py`](gui_app.py:76,77) to create agent configs.
+### [`parrotlm/analysis_utils.py`](parrotlm/analysis_utils.py)
+**Purpose**: Analisi linguistica e conteggio lessicale custom sui log.
 
-### [`analysis_utils.py`](analysis_utils.py)
-**Purpose**: Applies stylometric analysis (POS ratios) and custom lexicon counting to conversation logs.
+**Key exports**:
+- `analyze_text(text)`: token/sentence count + POS ratios.
+- `process_logs(df)`: applica `analyze_text` alla colonna `content`.
+- `count_custom_words(text, category_dict)`: conteggio per categorie.
+- `process_custom_lexicon(df, category_dict)`: aggiunge colonne lessicali.
 
-**Key Exports**:
-- `analyze_text(text)`: Computes token/sentence counts, POS ratios (noun, verb, adj, adv, pron).
-- `process_logs(df)`: Adds metrics to DataFrame with 'content' column.
-- `count_custom_words(text, category_dict)`: Counts category words.
-- `process_custom_lexicon(df, category_dict)`: Adds lexicon columns to DataFrame.
+**Dependencies**:
+- `nltk`, `pandas`, `collections.Counter`.
 
-**Dependencies**: spacy (`en_core_web_sm`), pandas.
+**Usage**:
+- Chiamata in [`gui_app.py`](gui_app.py:236) e [`gui_app.py`](gui_app.py:238).
 
-**Usage**: Called in [`gui_app.py`](gui_app.py:185,187) for Tab 3 analysis.
+### [`parrotlm/orchestrator.py`](parrotlm/orchestrator.py)
+**Purpose**: Motore di simulazione agent-to-agent, con metriche per turno.
 
-### [`orchestrator.py`](orchestrator.py)
-**Purpose**: Core engine for agent simulation, logging metrics (latency, tokens, refusals).
+**Key classes**:
+- `Agent(model_slug, system_prompt, name, max_history_turns=20)`
+  - `generate_response(input_text, **kwargs)`: invoca API chat completions, misura latenza/token, aggiorna history.
+- `Orchestrator(agent_a_config, agent_b_config, scenario_name, experiment_id=None)`
+  - `run_simulation(num_turns, initial_message="Hello.")`: generator dei log entry.
+  - `save_logs(filepath)`: append JSONL su file.
 
-**Key Classes**:
-- `Agent(model_slug, system_prompt, name)`: Manages chat history, generates responses via OpenAI client (OpenRouter), with retry logic.
-  - `generate_response(input_text, **kwargs)`: Appends to history, calls API, measures latency/tokens.
-- `Orchestrator(agent_a_config, agent_b_config, scenario_name)`: Alternates turns, yields log entries.
-  - `run_simulation(num_turns, initial_message)`: Generator yielding log dicts per response.
-  - `save_logs(filepath)`: Appends JSONL.
+**Log entry fields**:
+- `experiment_id`, `turn_id`, `scenario`, `speaker_model`, `responder_model`, `timestamp`, `latency_ms`, `input_tokens`, `output_tokens`, `content`, `finish_reason`, `is_refusal`, `system_prompt_snapshot`.
 
-**Log Entry Fields**: experiment_id, turn_id, scenario, speaker_model, responder_model, timestamp, latency_ms, input_tokens, output_tokens, content, finish_reason, is_refusal, system_prompt_snapshot.
-
-**Dependencies**: openai, tenacity (retry), pandas, dotenv, json, logging.
-
-**Usage**: Instantiated and run in [`gui_app.py`](gui_app.py:89-107,112).
+**Dependencies**:
+- `openai`, `tenacity`, `python-dotenv`, `json`, `logging`, `pandas`.
 
 ### [`gui_app.py`](gui_app.py)
-**Purpose**: Streamlit app for setup, live simulation, log viewing, and analysis.
+**Purpose**: App Streamlit per setup, run live, persistenza locale e analisi.
 
-**Key Features**:
-- Sidebar: API key, params (turns, temp, max_tokens).
-- Tab 1: Agent models/personas, setting/starter → Run simulation → Live chat + metrics.
-- Tab 2: Load JSONL → DataFrame + latency/tokens charts.
-- Tab 3: Custom lexicon → spaCy analysis + POS/lexicon charts → CSV download.
+**Key features**:
+- Sidebar: API key, turns, temperature, max tokens, context window.
+- Tab 1: setup due chatbot e simulazione live.
+- Tab 2: analisi base (latenza e token medi).
+- Tab 3: analisi NLTK + lessico custom + export CSV.
+- Persistenza log in browser via `streamlit_local_storage`.
 
-**Imports from Framework**:
-- [`simulation_config`](simulation_config.py:6): NUM_TURNS, ITERATIONS, DATA_DIR.
-- [`prompt_utils`](prompt_utils.py:1): construct_system_prompt.
-- [`analysis_utils`](analysis_utils.py:7): process_logs, process_custom_lexicon.
-- [`orchestrator`](orchestrator.py:90): Orchestrator.
-
-**Dependencies**: streamlit, pandas, plotly.express, os, time.
+**Framework imports**:
+- [`parrotlm/simulation_config.py`](parrotlm/simulation_config.py): `NUM_TURNS` (`gui_app.py:7`)
+- [`parrotlm/prompt_utils.py`](parrotlm/prompt_utils.py): `construct_system_prompt` (`gui_app.py:9`)
+- [`parrotlm/analysis_utils.py`](parrotlm/analysis_utils.py): `process_logs`, `process_custom_lexicon` (`gui_app.py:8`)
+- [`parrotlm/orchestrator.py`](parrotlm/orchestrator.py): import locale di `Orchestrator` (`gui_app.py:96`)
 
 ## Dependency Graph
 ```mermaid
 graph TD
-    gui[gui_app.py] --> config[simulation_config.py]
-    gui --> prompts[prompt_utils.py]
-    gui --> analysis[analysis_utils.py]
-    gui --> orch[orchestrator.py]
-    
-    prompts -.->|prompts used| orch
-    config -.->|DATA_DIR used| orch
-    orch -.->|logs analyzed| analysis
-    analysis -.->|in Tab 3| gui
-    
-    style gui fill:#e1f5fe
-    style orch fill:#f3e5f5
+    gui[gui_app.py] --> config[parrotlm/simulation_config.py]
+    gui --> prompts[parrotlm/prompt_utils.py]
+    gui --> analysis[parrotlm/analysis_utils.py]
+    gui --> orch[parrotlm/orchestrator.py]
+
+    orch --> openrouter[OpenRouter via OpenAI client]
+    gui --> localstore[Browser LocalStorage]
+    gui --> session[st.session_state]
 ```
 
 ## Relationships Summary
-
-| Module                  | Role              | Static Imports From | Used By (Static) | Runtime/Data Flow To |
-|-------------------------|-------------------|---------------------|------------------|----------------------|
-| [`simulation_config.py`](simulation_config.py) | Config       | -                   | gui_app.py      | orchestrator.py (DATA_DIR) |
-| [`prompt_utils.py`](prompt_utils.py)         | Prompt Gen   | -                   | gui_app.py      | orchestrator.py (via config) |
-| [`analysis_utils.py`](analysis_utils.py)     | Analysis     | spacy, pandas       | gui_app.py      | -                    |
-| [`orchestrator.py`](orchestrator.py)         | Simulation   | openai, etc.        | gui_app.py      | analysis_utils.py (logs) |
-| [`gui_app.py`](gui_app.py)                   | UI/Driver     | all above           | -               | -                    |
+| Module | Role | Static Imports From | Used By (Static) | Runtime/Data Flow To |
+|---|---|---|---|---|
+| [`parrotlm/simulation_config.py`](parrotlm/simulation_config.py) | Config | - | [`gui_app.py`](gui_app.py) | GUI defaults |
+| [`parrotlm/prompt_utils.py`](parrotlm/prompt_utils.py) | Prompt Gen | - | [`gui_app.py`](gui_app.py) | `Orchestrator` via prompt strings |
+| [`parrotlm/analysis_utils.py`](parrotlm/analysis_utils.py) | Analysis | `nltk`, `pandas` | [`gui_app.py`](gui_app.py) | Analisi tab 3 |
+| [`parrotlm/orchestrator.py`](parrotlm/orchestrator.py) | Simulation | `openai`, `tenacity`, etc. | [`gui_app.py`](gui_app.py) | Log entries verso GUI |
+| [`gui_app.py`](gui_app.py) | UI/Driver | moduli core | - | LocalStorage, visualizzazioni |
 
 ## Other Files
-- `requirements.txt`: Dependencies (streamlit, openai, spacy, etc.).
-- `.env.example`: OPENROUTER_API_KEY template.
-- `README.md`, `LICENSE`, `.gitignore`: Project metadata.
-- `package-lock.json`: Possibly unrelated (Node.js artifact?).
+- [`requirements.txt`](requirements.txt): dipendenze Python.
+- [`.env.example`](.env.example): template `OPENROUTER_API_KEY`.
+- [`README.md`](README.md), [`LICENSE`](LICENSE), [`.gitignore`](.gitignore): metadata progetto.
+- [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json): ambiente containerizzato per sviluppo.
 
-This map captures static imports and key data flows as of current codebase.
+Mappa aggiornata allo stato attuale del repository.
