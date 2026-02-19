@@ -1,12 +1,12 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
 import time
 from streamlit_local_storage import LocalStorage
-from simulation_config import NUM_TURNS
-from analysis_utils import process_logs, process_custom_lexicon
-from prompt_utils import construct_system_prompt
+from parrotlm.simulation_config import NUM_TURNS
+from parrotlm.analysis_utils import process_logs, process_custom_lexicon
+from parrotlm.prompt_utils import construct_system_prompt
 
 # --- Local Storage Setup ---
 local_storage = LocalStorage()
@@ -42,7 +42,7 @@ if api_key:
     os.environ["OPENROUTER_API_KEY"] = api_key
 
 if st.sidebar.button("🗑️ Clear My Local Data", help="Wipes all conversation history from your browser storage."):
-    local_storage.deleteAllItems()
+    local_storage.deleteItem("parrot_lm_logs")
     st.session_state["all_logs"] = pd.DataFrame()
     st.success("Local data cleared!")
     st.rerun()
@@ -93,7 +93,7 @@ with tab1:
         chat_container = st.container()
         
         # Initialize Orchestrator
-        from orchestrator import Orchestrator
+        from parrotlm.orchestrator import Orchestrator
         
         chatbot_a_config = {
             "model": model_a_slug,
@@ -271,3 +271,4 @@ with tab3:
                     st.plotly_chart(fig_lex, use_container_width=True)
         else:
             st.warning("No data found.")
+
