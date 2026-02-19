@@ -42,7 +42,14 @@ if api_key:
     os.environ["OPENROUTER_API_KEY"] = api_key
 
 if st.sidebar.button("🗑️ Clear My Local Data", help="Wipes all conversation history from your browser storage."):
-    local_storage.deleteItem("parrot_lm_logs")
+    # Avoid KeyError when the key does not exist yet.
+    if hasattr(local_storage, "eraseItem"):
+        local_storage.eraseItem("parrot_lm_logs", default=None)
+    else:
+        try:
+            local_storage.deleteItem("parrot_lm_logs")
+        except KeyError:
+            pass
     st.session_state["all_logs"] = pd.DataFrame()
     st.success("Local data cleared!")
     st.rerun()
@@ -82,7 +89,7 @@ with tab1:
     st.markdown("---")
     initial_message = st.text_input("The conversation starts with:", "Is this seat taken?")
     
-    if st.button("🚀 Start Conversation", type="primary", use_container_width=True):
+    if st.button("🚀 Start Conversation", type="primary", width="stretch"):
         st.write("### 🟢 Live Conversation")
         
         # Hidden System Prompt Generation
@@ -229,7 +236,7 @@ with tab3:
     }
     
     st.markdown("---")
-    if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
+    if st.button("🚀 Run Analysis", type="primary", width="stretch"):
         if not st.session_state["all_logs"].empty:
             with st.spinner("Processing text..."):
                 df = st.session_state["all_logs"]
