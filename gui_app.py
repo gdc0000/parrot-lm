@@ -28,7 +28,7 @@ if "all_logs" not in st.session_state:
     if saved_logs:
         try:
             st.session_state["all_logs"] = pd.DataFrame(saved_logs)
-        except:
+        except (TypeError, ValueError):
             st.session_state["all_logs"] = pd.DataFrame()
     else:
         st.session_state["all_logs"] = pd.DataFrame()

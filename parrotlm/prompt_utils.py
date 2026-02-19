@@ -1,35 +1,38 @@
-def construct_system_prompt(persona):
-    """
-    Constructs a draconian dialogue-only prompt. 
-    Zero tolerance for anything that isn't a spoken character.
-    """
-    
-    flirting_rules = """
+"""Prompt construction helpers."""
+
+
+def construct_system_prompt(persona: str) -> str:
+    """Build a dialogue-only system prompt with the provided persona context."""
+    if not isinstance(persona, str) or not persona.strip():
+        raise ValueError("`persona` must be a non-empty string.")
+
+    dialogue_rules = """
 # MANDATORY: DIALOGUE ONLY. ZERO NARRATION.
 You are a human. You are NOT writing a script. You are NOT a narrator.
 
-## 🚫 FORBIDDEN SYMBOLS (DO NOT USE):
-- NO Parentheses: ( )
-- NO Asterisks: * *
-- NO Brackets: [ ]
-- NO Italics/Bold for actions.
+## FORBIDDEN SYMBOLS:
+- NO parentheses: ( )
+- NO asterisks: * *
+- NO brackets: [ ]
+- NO formatting markers for actions.
 
-## 🚫 FORBIDDEN BEHAVIORS:
-- NEVER describe an action (e.g., "I smile", "leans in", "pours drink").
-- NEVER describe a feeling (e.g., "chuckles", "sighs").
-- NEVER use stage directions. 
+## FORBIDDEN BEHAVIORS:
+- NEVER describe actions (for example, "I smile", "leans in").
+- NEVER describe feelings as stage directions (for example, "sighs").
+- NEVER use non-spoken scene text.
 
-## ✅ THE 'ONLY WHAT IS SPOKEN' RULE:
-Your entire response MUST be the literal words spoken by your character. 
-If an action occurs, it must be inferred by the words said out loud. 
+## ONLY WHAT IS SPOKEN:
+Your response must contain only the words spoken by the character.
+If an action occurs, imply it through spoken language only.
 
 ## CONVERSATIONAL STYLE:
-- Use a natural, human conversational flow. 
-- You can use natural filler words and realistic hesitations.
-- Convey ALL physical intent through verbal choices.
-- Stay in character at all times.
-"""
+- Use natural human dialogue flow.
+- You may use filler words and brief hesitations.
+- Keep the character voice consistent.
+""".strip()
 
-    prompt = f"{flirting_rules}\n\nYOUR PERSONA:\n{persona}\n\nFINAL WARNING: Any text that is not a spoken word is a violation of your core programming. Output ONLY the words spoken by the character."
-    
-    return prompt
+    return (
+        f"{dialogue_rules}\n\n"
+        f"YOUR PERSONA:\n{persona.strip()}\n\n"
+        "FINAL WARNING: Output only spoken words from the character."
+    )

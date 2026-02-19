@@ -20,6 +20,14 @@ class TestAnalysisUtils(unittest.TestCase):
         self.assertEqual(counts["Positive"], 4)
         self.assertEqual(counts["Negative"], 0)
 
+    def test_count_custom_words_ignores_basic_punctuation(self):
+        text = "Love, love! good..."
+        category_dict = {"Positive": ["love", "good"]}
+
+        counts = self.analysis_utils.count_custom_words(text, category_dict)
+
+        self.assertEqual(counts["Positive"], 3)
+
     def test_process_logs_adds_metric_columns(self):
         df = pd.DataFrame({"content": ["hello world"]})
         fake_metrics = {
@@ -39,4 +47,13 @@ class TestAnalysisUtils(unittest.TestCase):
         self.assertIn("token_count", result.columns)
         self.assertIn("noun_ratio", result.columns)
         self.assertEqual(result.loc[0, "token_count"], 2)
+
+    def test_process_logs_falls_back_to_zero_metrics_on_error(self):
+        df = pd.DataFrame({"content": ["hello world"]})
+
+        with patch.object(self.analysis_utils, "analyze_text", side_effect=RuntimeError("boom")):
+            result = self.analysis_utils.process_logs(df)
+
+        self.assertEqual(result.loc[0, "token_count"], 0)
+        self.assertEqual(result.loc[0, "sentence_count"], 0)
 

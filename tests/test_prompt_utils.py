@@ -12,3 +12,7 @@ class TestPromptUtils(unittest.TestCase):
         self.assertIn("DIALOGUE ONLY", prompt)
         self.assertIn("YOUR PERSONA", prompt)
 
+    def test_construct_system_prompt_rejects_empty_persona(self):
+        with self.assertRaises(ValueError):
+            construct_system_prompt("   ")
+

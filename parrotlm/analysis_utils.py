@@ -1,106 +1,155 @@
+"""Text analysis and custom lexicon utilities used by the app."""
+
+from __future__ import annotations
+
+import logging
+import re
+from collections import Counter
+from typing import Any, Dict, Iterable
+
 import nltk
 import pandas as pd
-from collections import Counter
 
-# Ensure necessary NLTK data is downloaded
-try:
-    nltk.data.find('tokenizers/punkt')
-    nltk.data.find('tokenizers/punkt_tab')
-    nltk.data.find('taggers/averaged_perceptron_tagger')
-    nltk.data.find('taggers/averaged_perceptron_tagger_eng')
-    nltk.data.find('taggers/universal_tagset')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('punkt_tab')
-    nltk.download('averaged_perceptron_tagger')
-    nltk.download('averaged_perceptron_tagger_eng')
-    nltk.download('universal_tagset')
+logger = logging.getLogger(__name__)
 
-def analyze_text(text):
-    """
-    Analyzes a single text string and returns stylometric metrics using NLTK.
-    """
-    if not text:
-        return {
-            "token_count": 0,
-            "sentence_count": 0,
-            "avg_sentence_length": 0,
-            "noun_ratio": 0,
-            "verb_ratio": 0,
-            "adj_ratio": 0,
-            "adv_ratio": 0,
-            "pron_ratio": 0,
-        }
+_RESOURCE_PATHS = (
+    ("tokenizers/punkt", "punkt"),
+    ("tokenizers/punkt_tab", "punkt_tab"),
+    ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
+    ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
+    ("taggers/universal_tagset", "universal_tagset"),
+)
+_NLTK_READY = False
 
-    # Tokenize
-    tokens = nltk.word_tokenize(text)
-    sentences = nltk.sent_tokenize(text)
-    
-    # POS Tagging (Universal Tagset for simpler tags: NOUN, VERB, ADJ, ADV, etc.)
-    tagged_tokens = nltk.pos_tag(tokens, tagset='universal')
-    
-    # POS Counts
-    pos_counts = Counter([tag for word, tag in tagged_tokens])
-    total_tokens = len(tokens)
-    
-    # Calculate ratios
-    metrics = {
-        "token_count": total_tokens,
-        "sentence_count": len(sentences),
-        "avg_sentence_length": total_tokens / len(sentences) if len(sentences) > 0 else 0,
-        "noun_ratio": pos_counts.get("NOUN", 0) / total_tokens if total_tokens > 0 else 0,
-        "verb_ratio": pos_counts.get("VERB", 0) / total_tokens if total_tokens > 0 else 0,
-        "adj_ratio": pos_counts.get("ADJ", 0) / total_tokens if total_tokens > 0 else 0,
-        "adv_ratio": pos_counts.get("ADV", 0) / total_tokens if total_tokens > 0 else 0,
-        "pron_ratio": pos_counts.get("PRON", 0) / total_tokens if total_tokens > 0 else 0,
+
+def _empty_metrics() -> Dict[str, float]:
+    return {
+        "token_count": 0,
+        "sentence_count": 0,
+        "avg_sentence_length": 0.0,
+        "noun_ratio": 0.0,
+        "verb_ratio": 0.0,
+        "adj_ratio": 0.0,
+        "adv_ratio": 0.0,
+        "pron_ratio": 0.0,
     }
-    
-    return metrics
 
-def process_logs(df):
-    """
-    Applies text analysis to a DataFrame of conversation logs.
-    Expects a 'content' column.
-    Returns the DataFrame with added metric columns.
-    """
+
+def ensure_nltk_resources(download_missing: bool = False) -> None:
+    """Validate required NLTK resources and optionally download missing ones."""
+    missing: list[str] = []
+    for resource_path, download_name in _RESOURCE_PATHS:
+        try:
+            nltk.data.find(resource_path)
+        except LookupError:
+            missing.append(download_name)
+
+    if not missing:
+        return
+
+    if download_missing:
+        for download_name in missing:
+            nltk.download(download_name, quiet=True)
+        return ensure_nltk_resources(download_missing=False)
+
+    missing_csv = ", ".join(sorted(set(missing)))
+    raise RuntimeError(
+        "Missing NLTK resources. Run `python -c \"import nltk; "
+        f"[nltk.download(r) for r in {sorted(set(missing))}]\"` to install: {missing_csv}."
+    )
+
+
+def _ensure_nltk_ready() -> None:
+    global _NLTK_READY
+    if _NLTK_READY:
+        return
+    ensure_nltk_resources(download_missing=False)
+    _NLTK_READY = True
+
+
+def analyze_text(text: Any) -> Dict[str, float]:
+    """Analyze stylometric metrics for one text value."""
+    if text is None:
+        return _empty_metrics()
+
+    text_value = text if isinstance(text, str) else str(text)
+    text_value = text_value.strip()
+    if not text_value:
+        return _empty_metrics()
+
+    _ensure_nltk_ready()
+
+    tokens = nltk.word_tokenize(text_value)
+    sentences = nltk.sent_tokenize(text_value)
+
+    if not tokens:
+        return _empty_metrics()
+
+    tagged_tokens = nltk.pos_tag(tokens, tagset="universal")
+    pos_counts = Counter(tag for _, tag in tagged_tokens)
+    total_tokens = len(tokens)
+    total_sentences = len(sentences)
+
+    return {
+        "token_count": float(total_tokens),
+        "sentence_count": float(total_sentences),
+        "avg_sentence_length": total_tokens / total_sentences if total_sentences else 0.0,
+        "noun_ratio": pos_counts.get("NOUN", 0) / total_tokens,
+        "verb_ratio": pos_counts.get("VERB", 0) / total_tokens,
+        "adj_ratio": pos_counts.get("ADJ", 0) / total_tokens,
+        "adv_ratio": pos_counts.get("ADV", 0) / total_tokens,
+        "pron_ratio": pos_counts.get("PRON", 0) / total_tokens,
+    }
+
+
+def _safe_analyze_text(value: Any) -> Dict[str, float]:
+    try:
+        return analyze_text(value)
+    except Exception:
+        logger.exception("Failed to analyze a text row; using zeroed metrics.")
+        return _empty_metrics()
+
+
+def process_logs(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply text analysis to a conversation log dataframe."""
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("`df` must be a pandas DataFrame.")
     if df.empty or "content" not in df.columns:
-        return df
-        
-    # Apply analysis to each message
-    # We use apply with a lambda to expand the dictionary into columns
-    metrics_df = df["content"].apply(lambda x: pd.Series(analyze_text(x)))
-    
-    # Concatenate with original dataframe
-    result_df = pd.concat([df, metrics_df], axis=1)
-    
-    return result_df
+        return df.copy()
 
-def count_custom_words(text, category_dict):
-    """
-    Counts occurrences of words from user-defined categories.
-    category_dict: { "CategoryName": ["word1", "word2"], ... }
-    Returns a dictionary with counts for each category.
-    """
-    text_lower = text.lower()
-    tokens = text_lower.split() # Simple tokenization for word matching
-    
-    counts = {cat: 0 for cat in category_dict}
-    
-    for cat, words in category_dict.items():
-        for word in words:
-            # Simple matching: count occurrences of the word in the token list
-            # Note: This is a basic implementation. For more robust matching (regex, stems), 
-            # more complex logic would be needed.
-            counts[cat] += tokens.count(word.lower())
-            
+    metrics_df = pd.DataFrame(df["content"].map(_safe_analyze_text).tolist(), index=df.index)
+    return pd.concat([df.copy(), metrics_df], axis=1)
+
+
+def _normalize_tokens(text: Any) -> Iterable[str]:
+    text_value = text if isinstance(text, str) else str(text or "")
+    return re.findall(r"\b[\w']+\b", text_value.lower())
+
+
+def count_custom_words(text: Any, category_dict: Dict[str, list[str]]) -> Dict[str, int]:
+    """Count matches for custom word categories."""
+    if not category_dict:
+        return {}
+
+    token_counter = Counter(_normalize_tokens(text))
+    counts: Dict[str, int] = {}
+
+    for category, words in category_dict.items():
+        words_list = words or []
+        counts[category] = sum(token_counter.get(str(word).lower(), 0) for word in words_list if word)
+
     return counts
 
-def process_custom_lexicon(df, category_dict):
-    """
-    Applies custom lexicon counting to the dataframe.
-    """
+
+def process_custom_lexicon(df: pd.DataFrame, category_dict: Dict[str, list[str]]) -> pd.DataFrame:
+    """Add custom lexicon counts to a dataframe that contains a `content` column."""
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("`df` must be a pandas DataFrame.")
     if df.empty or "content" not in df.columns or not category_dict:
-        return df
-        
-    lexicon_df = df["content"].apply(lambda x: pd.Series(count_custom_words(x, category_dict)))
-    return pd.concat([df, lexicon_df], axis=1)
+        return df.copy()
+
+    lexicon_df = pd.DataFrame(
+        df["content"].map(lambda value: count_custom_words(value, category_dict)).tolist(),
+        index=df.index,
+    )
+    return pd.concat([df.copy(), lexicon_df], axis=1)

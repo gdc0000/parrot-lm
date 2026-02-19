@@ -1,7 +1,7 @@
 import os
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 from parrotlm.orchestrator import Agent, Orchestrator
 
@@ -63,4 +63,28 @@ class TestOrchestrator(unittest.TestCase):
         self.assertEqual(len(logs), 2)
         self.assertIn("content", logs[0])
         self.assertIn("system_prompt_snapshot", logs[0])
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+    def test_save_logs_works_with_plain_filename(self, _mock_openai):
+        agent_a_config = {
+            "model": "fake/model-a",
+            "system_prompt": "Persona A",
+            "user_persona_snapshot": "Persona A",
+        }
+        agent_b_config = {
+            "model": "fake/model-b",
+            "system_prompt": "Persona B",
+            "user_persona_snapshot": "Persona B",
+        }
+
+        orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+        list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
+
+        mocked_file = mock_open()
+        with patch("builtins.open", mocked_file):
+            orchestrator.save_logs("logs.jsonl")
+
+        write_calls = mocked_file().write.call_count
+        self.assertEqual(write_calls, 2)
 
