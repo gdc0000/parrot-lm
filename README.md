@@ -1,85 +1,83 @@
-# 🦜ParrotLM
+# ParrotLM
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A Python-based framework for simulating and analyzing social interactions between Large Language Models (LLMs). This tool allows researchers to configure agents with specific personas, interaction settings, and models to study social dynamics, linguistic patterns, and emergent behaviors.
+ParrotLM is a Python framework for simulating and analyzing conversations between two LLM chatbots through a Streamlit UI. It supports custom personas, OpenRouter model slugs, live turn-by-turn execution, and built-in linguistic analysis.
 
-## 🚀 Features
+## Features
+- Two-chatbot conversation simulation with live streaming in the UI.
+- Persona-driven system prompt construction with strict dialogue-only constraints.
+- OpenRouter integration via the OpenAI Python client.
+- Technical runtime controls from the sidebar:
+  - turns per chatbot,
+  - temperature per chatbot,
+  - max tokens,
+  - context window (history depth).
+- Analysis tabs:
+  - basic metrics (average latency and output tokens by model),
+  - stylometric analysis with NLTK (token/sentence metrics and POS ratios),
+  - custom lexicon categories (LIWC-style word counting),
+  - CSV export of analyzed data.
+- Browser-local persistence of run logs (`streamlit-local-storage`) with clear/reset support.
 
-*   **Dynamic Agent Configuration**: Assign specific **Personas** (e.g., "Julius Caesar", "Data Scientist") and **Interaction Settings** (e.g., "Intimate", "Professional", "Debate") to control the tone and content of the conversation.
-*   **Real-Time Simulation**: Watch the conversation unfold turn-by-turn in an interactive Streamlit GUI.
-*   **Multi-Model Support**: Integrate any model from OpenRouter (Llama 3, Claude 3, Grok, etc.) by simply entering its slug.
-*   **Stylometric Analysis**: Built-in NLP tools (powered by **NLTK**) to analyze:
-    *   Part-of-Speech (POS) distribution.
-    *   Sentence length and complexity.
-    *   **Custom Word Frequency (LIWC-style)**: Define your own categories (e.g., "Aggression", "Politeness") and track their usage.
-*   **Data Logging**: All experiments are automatically logged to JSONL and CSV for easy export and external analysis.
+## Current Architecture
+- `gui_app.py`: Streamlit entrypoint and tab composition.
+- `parrotlm/ui/sidebar.py`: API key input and technical settings controls.
+- `parrotlm/ui/chat_setup_tab.py`: chatbot setup and simulation execution flow.
+- `parrotlm/orchestrator.py`: chatbot runtime, retry logic, log generation, optional JSONL save.
+- `parrotlm/prompt_utils.py`: persona-to-system-prompt construction.
+- `parrotlm/analysis_utils.py`: NLTK and custom lexicon analysis functions.
+- `parrotlm/ui/session_state.py`: session state and local storage sync helpers.
 
-## 🛠️ Technical Stack
+## Requirements
+- Python 3.10+
+- OpenRouter API key (`OPENROUTER_API_KEY`)
 
-*   **Core Logic**: Python 3.10+
-*   **GUI**: [Streamlit](https://streamlit.io/) for the interactive dashboard.
-*   **LLM Integration**: [OpenAI Python Client](https://github.com/openai/openai-python) (configured for OpenRouter API).
-*   **Data Visualization**: [Plotly](https://plotly.com/python/) for interactive charts.
-*   **NLP & Analysis**: [NLTK](https://www.nltk.org/) for linguistic processing and POS tagging.
-*   **Resilience**: `tenacity` for robust API retry logic.
+Install dependencies:
 
-## ⚙️ Orchestration Pipeline
+```bash
+pip install -r requirements.txt
+```
 
-The framework follows a modular pipeline designed for flexibility and real-time feedback:
+## NLTK Setup
+Stylometric analysis requires local NLTK resources. Install them once:
 
-1.  **Configuration (GUI)**:
-    *   User defines Model IDs, Personas, Interaction Settings, and Temperature in `gui_app.py`.
-    *   User selects or types a "Conversation Starter".
+```bash
+python -c "import nltk; [nltk.download(r) for r in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng','universal_tagset']]"
+```
 
-2.  **Prompt Generation**:
-    *   `prompt_utils.py` dynamically constructs the System Prompt by combining:
-        *   **Scenario Base**: The interaction setting (e.g., "You are in a professional environment...").
-        *   **Persona Context**: The character description (e.g., "You are a pirate...").
-        *   **Custom Instructions**: Any additional constraints.
+## Configuration
+Set your API key in one of these ways:
+- Environment variable:
+  - `OPENROUTER_API_KEY=...`
+- `.env` file (copy from `.env.example`)
+- Streamlit sidebar input field at runtime
 
-3.  **Orchestration (Streaming)**:
-    *   `orchestrator.py` initializes two `Agent` instances with the generated prompts.
-    *   The `run_simulation` method executes the conversation loop.
-    *   It **yields** `log_entry` objects turn-by-turn, allowing the GUI to display messages and metrics in real-time without waiting for the entire simulation to finish.
-
-4.  **Data Logging**:
-    *   Each turn (content, latency, token usage, model ID) is appended to an in-memory list and saved incrementally to `data/experiment_log.jsonl`.
-
-5.  **Analysis**:
-    *   `analysis_utils.py` processes the logs using `NLTK` to extract linguistic features.
-    *   The GUI visualizes these metrics, grouping them by model or category for comparative analysis.
-
-## 📦 Installation
-
-1.  **Clone the repository**:
-    ```bash
-    git clone <repository-url>
-    ```
-
-2.  **Install dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-> **Note:** NLTK does not require a separate model download; required data will be downloaded automatically on first run.
-
-4.  **Set up API Key**:
-    *   Create a `.env` file (copy from `.env.example`) and add your `OPENROUTER_API_KEY`.
-    *   Alternatively, enter the key directly in the GUI sidebar.
-
-## 🖥️ Usage
-
-Run the Streamlit application:
-
+## Run The App
 ```bash
 python -m streamlit run gui_app.py
 ```
 
-1.  **Configure Agents**: On the main page, enter the Model Slugs (e.g., `x-ai/grok-beta`) and describe their Personas.
-2.  **Set Context**: Choose an Interaction Setting (e.g., "Intimate") and a Conversation Starter.
-3.  **Run**: Click "Start Simulation" to watch the agents converse.
-4.  **Analyze**: Switch to the "Stylometric Analysis" tab to view linguistic insights.
+In the UI:
+1. Configure model slugs and personas for Chatbot A and Chatbot B.
+2. Set the initial message.
+3. Tune technical settings in the sidebar.
+4. Start the conversation and review analysis tabs.
+
+## Data Behavior
+- During normal UI usage, logs are stored in:
+  - `st.session_state["all_logs"]`
+  - browser local storage key `parrot_lm_logs`
+- `Orchestrator.save_logs(filepath)` supports JSONL persistence for programmatic usage, but the Streamlit flow currently persists locally in browser storage by default.
+
+## Tests
+Run unit tests:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+See `tests/README.md` for coverage details by module.
 
 ## License
+Licensed under Apache License 2.0. See `LICENSE`.
 
-This project is licensed under the Apache License, Version 2.0. See `LICENSE` file for details.
