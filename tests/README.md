@@ -33,6 +33,7 @@ Why:
 What it does:
 - Verifies category word counting (`count_custom_words`) is correct.
 - Verifies log processing (`process_logs`) adds expected analysis columns.
+- Verifies dataframe input validation for `process_logs` and `process_custom_lexicon`.
 - Uses mocking for `nltk` resource checks/downloads and for `analyze_text` where needed.
 
 Why:
@@ -43,6 +44,8 @@ Why:
 What it does:
 - Verifies `Agent.generate_response` returns expected fields and token metadata.
 - Verifies `Orchestrator.run_simulation(num_turns=1)` emits two log entries (one per agent turn).
+- Verifies distinct `max_history_turns` are applied independently to Agent A and Agent B.
+- Verifies invalid non-dictionary `params` are rejected early with a clear error.
 - Mocks OpenAI client calls and injects a fake API key.
 
 Why:

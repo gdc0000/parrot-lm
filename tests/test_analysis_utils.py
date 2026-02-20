@@ -57,3 +57,11 @@ class TestAnalysisUtils(unittest.TestCase):
         self.assertEqual(result.loc[0, "token_count"], 0)
         self.assertEqual(result.loc[0, "sentence_count"], 0)
 
+    def test_process_logs_requires_dataframe_input(self):
+        with self.assertRaises(TypeError):
+            self.analysis_utils.process_logs(["not-a-dataframe"])
+
+    def test_process_custom_lexicon_requires_dataframe_input(self):
+        with self.assertRaises(TypeError):
+            self.analysis_utils.process_custom_lexicon(["not-a-dataframe"], {"x": ["y"]})
+

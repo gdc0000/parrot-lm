@@ -88,3 +88,38 @@ class TestOrchestrator(unittest.TestCase):
         write_calls = mocked_file().write.call_count
         self.assertEqual(write_calls, 2)
 
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+    def test_orchestrator_uses_distinct_history_windows_per_agent(self, _mock_openai):
+        agent_a_config = {
+            "model": "fake/model-a",
+            "system_prompt": "Persona A",
+            "max_history_turns": 3,
+        }
+        agent_b_config = {
+            "model": "fake/model-b",
+            "system_prompt": "Persona B",
+            "max_history_turns": 7,
+        }
+
+        orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+
+        self.assertEqual(orchestrator.agent_a.max_history_turns, 3)
+        self.assertEqual(orchestrator.agent_b.max_history_turns, 7)
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+    def test_orchestrator_rejects_non_dict_agent_params(self, _mock_openai):
+        agent_a_config = {
+            "model": "fake/model-a",
+            "system_prompt": "Persona A",
+            "params": ["invalid"],
+        }
+        agent_b_config = {
+            "model": "fake/model-b",
+            "system_prompt": "Persona B",
+        }
+
+        with self.assertRaises(TypeError):
+            Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+

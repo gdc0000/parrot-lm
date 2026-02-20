@@ -41,6 +41,23 @@ def _validate_non_empty_string(value: Any, field_name: str) -> str:
     return value.strip()
 
 
+def _validate_positive_int(value: Any, field_name: str, default: int) -> int:
+    """Validate an optional positive integer value with fallback default."""
+    resolved = default if value is None else value
+    if not isinstance(resolved, int) or resolved <= 0:
+        raise ValueError(f"`{field_name}` must be a positive integer.")
+    return resolved
+
+
+def _validate_generation_params(params: Any, field_name: str) -> Dict[str, Any]:
+    """Validate optional per-agent model generation parameters."""
+    if params is None:
+        return {}
+    if not isinstance(params, dict):
+        raise TypeError(f"`{field_name}` must be a dictionary.")
+    return params
+
+
 class Agent:
     """Represents a single LLM agent in a simulation."""
 
@@ -135,25 +152,40 @@ class Orchestrator:
         if not isinstance(agent_a_config, dict) or not isinstance(agent_b_config, dict):
             raise TypeError("`agent_a_config` and `agent_b_config` must be dictionaries.")
 
-        max_history_turns = int(agent_a_config.get("max_history_turns", 20))
+        max_history_turns_a = _validate_positive_int(
+            agent_a_config.get("max_history_turns"),
+            "agent_a_config['max_history_turns']",
+            default=20,
+        )
+        max_history_turns_b = _validate_positive_int(
+            agent_b_config.get("max_history_turns"),
+            "agent_b_config['max_history_turns']",
+            default=20,
+        )
 
         self.agent_a = Agent(
             model_slug=agent_a_config["model"],
             system_prompt=agent_a_config["system_prompt"],
             name="Agent A",
-            max_history_turns=max_history_turns,
+            max_history_turns=max_history_turns_a,
         )
         self.agent_b = Agent(
             model_slug=agent_b_config["model"],
             system_prompt=agent_b_config["system_prompt"],
             name="Agent B",
-            max_history_turns=max_history_turns,
+            max_history_turns=max_history_turns_b,
         )
 
         self.persona_a_snapshot = agent_a_config.get("user_persona_snapshot", self.agent_a.system_prompt)
         self.persona_b_snapshot = agent_b_config.get("user_persona_snapshot", self.agent_b.system_prompt)
-        self.agent_a_params = agent_a_config.get("params", {})
-        self.agent_b_params = agent_b_config.get("params", {})
+        self.agent_a_params = _validate_generation_params(
+            agent_a_config.get("params"),
+            "agent_a_config['params']",
+        )
+        self.agent_b_params = _validate_generation_params(
+            agent_b_config.get("params"),
+            "agent_b_config['params']",
+        )
         self.logs: List[Dict[str, Any]] = []
 
     def run_simulation(
