@@ -104,7 +104,7 @@ def render_chatbot_setup_tab(settings: TechnicalSettings, local_storage: Any) ->
                 time.sleep(0.1)
 
         st.success(f"Simulation Complete. Total Tokens: {total_tokens}")
-    except Exception as error:
+    except (ValueError, TypeError, RuntimeError, OSError) as error:
         st.error(f"❌ Simulation Error: {error}")
         st.info("💡 Tip: Try increasing 'Max Tokens' if the API is failing with low values.")
 
@@ -142,4 +142,3 @@ def _render_chat_message(
             f"</span></div>",
             unsafe_allow_html=True,
         )
-

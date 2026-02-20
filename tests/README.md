@@ -7,6 +7,7 @@ This folder contains unit tests for the ParrotLM core package (`parrotlm`).
 - `test_prompt_utils.py`
 - `test_analysis_utils.py`
 - `test_orchestrator.py`
+- `test_session_state.py`
 
 ## Test Files
 
@@ -51,6 +52,17 @@ What it does:
 Why:
 - Orchestration is the core runtime path.
 - Mocking avoids external API calls, making tests fast and reliable while still validating conversation flow and log schema.
+
+### `test_session_state.py`
+What it does:
+- Verifies `initialize_session_state` sets required defaults when storage is empty.
+- Verifies `initialize_session_state` correctly loads persisted logs from local storage.
+- Verifies `clear_local_data` clears both local storage and in-memory dataframe.
+- Verifies `append_and_persist_logs` appends rows and persists merged records.
+
+Why:
+- Session-state and local persistence are critical to consistent UI behavior.
+- These tests protect against regressions in log initialization, reset, and persistence flow.
 
 ## Run Tests
 From project root:
