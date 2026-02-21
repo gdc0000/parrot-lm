@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 LOCAL_STORAGE_LOG_KEY = "parrot_lm_logs"
 logger = logging.getLogger(__name__)
@@ -55,6 +56,16 @@ def initialize_session_state(local_storage: Any) -> None:
 
 def _delete_local_storage_logs(local_storage: Any) -> None:
     """Delete logs from browser storage across supported local-storage adapters."""
+    # Aggressive JS clear as the primary reliable method
+    components.html(
+        f"""
+        <script>
+            localStorage.removeItem("{LOCAL_STORAGE_LOG_KEY}");
+        </script>
+        """,
+        height=0,
+    )
+
     if hasattr(local_storage, "eraseItem"):
         # Some streamlit-local-storage versions expose eraseItem instead of deleteItem.
         try:

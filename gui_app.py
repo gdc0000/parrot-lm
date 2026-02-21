@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import streamlit as st
 from streamlit_local_storage import LocalStorage
 
@@ -29,8 +30,11 @@ def main() -> None:
     settings, clear_requested = render_sidebar(NUM_TURNS)
     if clear_requested:
         clear_local_data(local_storage)
-        st.success("Local data cleared.")
-        st.rerun()
+        st.sidebar.success("Local data cleared.")
+        # We avoid st.rerun() here because it can interrupt the local_storage component's 
+        # communication with the browser, preventing the actual deletion.
+        # The session state is already updated in-memory by clear_local_data().
+        time.sleep(0.5)
 
     st.markdown("---")
     setup_tab, basic_analysis_tab, stylometric_tab = st.tabs(
