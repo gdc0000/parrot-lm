@@ -82,6 +82,12 @@ def _delete_local_storage_logs(local_storage: Any) -> None:
 
 def clear_local_data(local_storage: Any) -> None:
     """Remove persisted logs from browser storage and reset in-memory dataframe."""
+    # Overwrite with empty list first to ensure data is gone even if deleteItem fails.
+    try:
+        local_storage.setItem(LOCAL_STORAGE_LOG_KEY, [])
+    except (AttributeError, TypeError, ValueError):
+        logger.warning("local_storage_overwrite_failed_on_clear | key=%s", LOCAL_STORAGE_LOG_KEY)
+
     _delete_local_storage_logs(local_storage)
     st.session_state["all_logs"] = _empty_logs_dataframe()
 
