@@ -16,8 +16,8 @@ def main() -> None:
     """Render the full Streamlit app."""
     local_storage = LocalStorage()
 
-    st.set_page_config(page_title="🦜ParrotLM", layout="wide")
-    st.title("🦜ParrotLM")
+    st.set_page_config(page_title="ParrotLM", layout="wide")
+    st.title("ParrotLM")
     st.markdown(
         "A customizable Python framework for simulating conversations "
         "between two LLM chatbots with customizable personas, interaction settings, "
@@ -29,20 +29,21 @@ def main() -> None:
     settings, clear_requested = render_sidebar(NUM_TURNS)
     if clear_requested:
         clear_local_data(local_storage)
-        st.success("Local data cleared!")
+        st.success("Local data cleared.")
         st.rerun()
 
     st.markdown("---")
-    tab1, tab2, tab3 = st.tabs(["🎭 Chatbot Setup", "📊 Basic Analysis", "🧠 Stylometric Analysis"])
+    setup_tab, basic_analysis_tab, stylometric_tab = st.tabs(
+        ["Chatbot Setup", "Basic Analysis", "Stylometric Analysis"]
+    )
 
-    with tab1:
+    with setup_tab:
         render_chatbot_setup_tab(settings, local_storage)
-    with tab2:
+    with basic_analysis_tab:
         render_basic_analysis_tab()
-    with tab3:
+    with stylometric_tab:
         render_stylometric_analysis_tab()
 
 
 if __name__ == "__main__":
     main()
-

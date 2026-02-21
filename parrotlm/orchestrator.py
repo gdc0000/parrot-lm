@@ -8,7 +8,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -178,6 +178,10 @@ class Orchestrator:
 
         self.persona_a_snapshot = agent_a_config.get("user_persona_snapshot", self.agent_a.system_prompt)
         self.persona_b_snapshot = agent_b_config.get("user_persona_snapshot", self.agent_b.system_prompt)
+        self.system_prompt_snapshot_by_agent = {
+            self.agent_a.name: self.persona_a_snapshot,
+            self.agent_b.name: self.persona_b_snapshot,
+        }
         self.agent_a_params = _validate_generation_params(
             agent_a_config.get("params"),
             "agent_a_config['params']",
@@ -205,37 +209,55 @@ class Orchestrator:
         )
 
         for turn_id in range(num_turns):
-            try:
-                logger.info("Turn %s: Agent A generating response...", turn_id)
-                response_a = self.agent_a.generate_response(last_message, **self.agent_a_params)
-                log_entry_a = self._create_log_entry(turn_id, self.agent_a, self.agent_b, response_a)
-                self.logs.append(log_entry_a)
-                yield log_entry_a
+            log_entry_a, last_message, should_stop = self._run_single_agent_turn(
+                turn_id=turn_id,
+                speaker=self.agent_a,
+                responder=self.agent_b,
+                input_message=last_message,
+                generation_params=self.agent_a_params,
+            )
+            yield log_entry_a
+            if should_stop:
+                break
 
-                last_message = response_a["content"] or "..."
-                if response_a["is_refusal"]:
-                    logger.warning("Agent A refused to respond. Ending simulation.")
-                    break
-            except Exception as exception:
-                logger.exception("Failed turn %s for Agent A.", turn_id)
-                raise RuntimeError(f"Agent A failed on turn {turn_id}.") from exception
-
-            try:
-                logger.info("Turn %s: Agent B generating response...", turn_id)
-                response_b = self.agent_b.generate_response(last_message, **self.agent_b_params)
-                log_entry_b = self._create_log_entry(turn_id, self.agent_b, self.agent_a, response_b)
-                self.logs.append(log_entry_b)
-                yield log_entry_b
-
-                last_message = response_b["content"] or "..."
-                if response_b["is_refusal"]:
-                    logger.warning("Agent B refused to respond. Ending simulation.")
-                    break
-            except Exception as exception:
-                logger.exception("Failed turn %s for Agent B.", turn_id)
-                raise RuntimeError(f"Agent B failed on turn {turn_id}.") from exception
+            log_entry_b, last_message, should_stop = self._run_single_agent_turn(
+                turn_id=turn_id,
+                speaker=self.agent_b,
+                responder=self.agent_a,
+                input_message=last_message,
+                generation_params=self.agent_b_params,
+            )
+            yield log_entry_b
+            if should_stop:
+                break
 
         logger.info("Simulation %s completed.", self.experiment_id)
+
+    def _run_single_agent_turn(
+        self,
+        turn_id: int,
+        speaker: Agent,
+        responder: Agent,
+        input_message: str,
+        generation_params: Dict[str, Any],
+    ) -> Tuple[Dict[str, Any], str, bool]:
+        """Generate one speaker response, append the log, and return stop status."""
+        try:
+            logger.info("Turn %s: %s generating response...", turn_id, speaker.name)
+            response_data = speaker.generate_response(input_message, **generation_params)
+        except Exception as exception:
+            logger.exception("Failed turn %s for %s.", turn_id, speaker.name)
+            raise RuntimeError(f"{speaker.name} failed on turn {turn_id}.") from exception
+
+        log_entry = self._create_log_entry(turn_id, speaker, responder, response_data)
+        self.logs.append(log_entry)
+
+        next_message = response_data["content"] or "..."
+        should_stop = bool(response_data["is_refusal"])
+        if should_stop:
+            logger.warning("%s refused to respond. Ending simulation.", speaker.name)
+
+        return log_entry, next_message, should_stop
 
     def _create_log_entry(
         self,
@@ -258,8 +280,9 @@ class Orchestrator:
             "content": response_data["content"],
             "finish_reason": response_data["finish_reason"],
             "is_refusal": response_data["is_refusal"],
-            "system_prompt_snapshot": (
-                self.persona_a_snapshot if speaker.name == "Agent A" else self.persona_b_snapshot
+            "system_prompt_snapshot": self.system_prompt_snapshot_by_agent.get(
+                speaker.name,
+                speaker.system_prompt,
             ),
         }
 

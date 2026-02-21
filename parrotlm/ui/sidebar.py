@@ -21,14 +21,14 @@ class TechnicalSettings:
 
 def render_sidebar(default_turns: int) -> tuple[TechnicalSettings, bool]:
     """Render sidebar inputs and return user-selected settings."""
-    st.sidebar.header("⚙️ Technical Settings")
+    st.sidebar.header("Technical Settings")
 
     api_key = st.sidebar.text_input("OpenRouter API Key", type="password")
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
 
     clear_requested = st.sidebar.button(
-        "🗑️ Clear My Local Data",
+        "Clear Local Data",
         help="Wipes all conversation history from your browser storage.",
     )
 
@@ -79,4 +79,3 @@ def render_sidebar(default_turns: int) -> tuple[TechnicalSettings, bool]:
         context_window=context_window,
     )
     return settings, clear_requested
-
