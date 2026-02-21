@@ -19,7 +19,10 @@ The app uses the OpenAI Python client configured for OpenRouter.
 ### Core package
 - `parrotlm/simulation_config.py`: default simulation constants and config validation.
 - `parrotlm/prompt_utils.py`: system-prompt construction from persona text.
-- `parrotlm/orchestrator.py`: agent runtime, turn loop, retries, and structured log creation.
+- `parrotlm/_validators.py`: input validation helpers and API-key resolver.
+- `parrotlm/_logging.py`: structured logging utilities.
+- `parrotlm/agent.py`: single LLM agent — model config, history window, retries, and API calls.
+- `parrotlm/orchestrator.py`: orchestrates multi-turn conversations between two agents.
 - `parrotlm/analysis_utils.py`: NLTK-based text metrics and custom lexicon counting.
 
 ### UI package
@@ -61,14 +64,41 @@ Used by:
 - `parrotlm/ui/chat_setup_tab.py`
 - tests in `tests/test_prompt_utils.py`
 
+### `parrotlm/_validators.py`
+Purpose:
+- Validates and normalizes caller inputs (strings, integers, dicts, response payloads).
+- Resolves the OpenRouter API key from env or `.env`.
+
+Used by:
+- `parrotlm/agent.py`
+- `parrotlm/orchestrator.py`
+
+### `parrotlm/_logging.py`
+Purpose:
+- `log_structured`: emits machine-readable log events with JSON context.
+- `is_retryable_exception`: filter for tenacity retry decorator.
+
+Used by:
+- `parrotlm/agent.py`
+- `parrotlm/orchestrator.py`
+
+### `parrotlm/agent.py`
+Purpose:
+- Encapsulates a single LLM agent: model slug, system prompt, conversation history, and API calls.
+- Applies a bounded sliding-window history and exponential-backoff retries.
+
+Key export:
+- `Agent`
+
+Used by:
+- `parrotlm/orchestrator.py`
+- tests in `tests/test_orchestrator.py`
+
 ### `parrotlm/orchestrator.py`
 Purpose:
-- Encapsulates two-agent simulation and response generation.
-- Normalizes per-turn metadata into log entries.
-
-Main components:
-- `Agent`: manages model config, history window, retries, and API calls.
-- `Orchestrator`: coordinates turn-by-turn exchange between Agent A and Agent B.
+- Coordinates a multi-turn conversation between two `Agent` instances.
+- Normalizes per-turn metadata into structured log entries.
+- Re-exports `Agent` for backward-compatible imports.
 
 Key outputs per log entry:
 - `experiment_id`, `turn_id`, `scenario`, `speaker_model`, `responder_model`
@@ -146,7 +176,13 @@ graph TD
     tabs --> analysis[parrotlm/analysis_utils.py]
     chat --> state
 
-    orch --> openrouter[OpenRouter via OpenAI client]
+    orch --> agent[parrotlm/agent.py]
+    orch --> val[parrotlm/_validators.py]
+    orch --> log[parrotlm/_logging.py]
+    agent --> val
+    agent --> log
+    agent --> openrouter[OpenRouter via OpenAI client]
+
     state --> session[st.session_state]
     state --> local[Browser local storage]
 ```

@@ -39,7 +39,7 @@ class _FakeLocalStorage:
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestration_to_persistence_to_analysis_pipeline(_mock_openai):
     orchestrator = Orchestrator(
         agent_a_config={"model": "fake/model-a", "system_prompt": "Persona A"},

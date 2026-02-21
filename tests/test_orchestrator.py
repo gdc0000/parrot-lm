@@ -44,7 +44,7 @@ class _EmptyContentOpenAIClient:
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_agent_generate_response_returns_expected_fields(_mock_openai):
     agent = Agent(
         model_slug="fake/model",
@@ -63,7 +63,7 @@ def test_agent_generate_response_returns_expected_fields(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
     agent_a_config = {
         "model": "fake/model-a",
@@ -85,7 +85,7 @@ def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_save_logs_works_with_plain_filename(_mock_openai):
     agent_a_config = {
         "model": "fake/model-a",
@@ -110,7 +110,7 @@ def test_save_logs_works_with_plain_filename(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestrator_uses_distinct_history_windows_per_agent(_mock_openai):
     agent_a_config = {
         "model": "fake/model-a",
@@ -130,7 +130,7 @@ def test_orchestrator_uses_distinct_history_windows_per_agent(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestrator_rejects_non_dict_agent_params(_mock_openai):
     agent_a_config = {
         "model": "fake/model-a",
@@ -147,7 +147,7 @@ def test_orchestrator_rejects_non_dict_agent_params(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_EmptyContentOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_EmptyContentOpenAIClient)
 def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
     agent = Agent(
         model_slug="fake/model",
@@ -165,7 +165,7 @@ def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
     agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
     agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
@@ -189,7 +189,7 @@ def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_wraps_agent_failure(_mock_openai):
     agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
     agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
@@ -204,7 +204,7 @@ def test_run_simulation_wraps_agent_failure(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_save_logs_creates_directory_when_path_includes_folder(_mock_openai):
     agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
     agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
@@ -219,7 +219,7 @@ def test_save_logs_creates_directory_when_path_includes_folder(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_wraps_invalid_agent_payload(_mock_openai):
     agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
     agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
