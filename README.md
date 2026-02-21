@@ -32,10 +32,35 @@ ParrotLM is a Python framework for simulating and analyzing conversations betwee
 - Python 3.10+
 - OpenRouter API key (`OPENROUTER_API_KEY`)
 
-Install dependencies:
+## Quickstart
+1. Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+# macOS/Linux
+source .venv/bin/activate
+```
+
+2. Install project dependencies:
 
 ```bash
 pip install -r requirements.txt
+```
+
+3. Install NLTK resources (required for the stylometric tab):
+
+```bash
+python -c "import nltk; [nltk.download(r) for r in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng','universal_tagset']]"
+```
+
+4. Set your API key using one of the methods in the Configuration section below.
+
+5. Run the Streamlit app:
+
+```bash
+python -m streamlit run gui_app.py
 ```
 
 ## NLTK Setup

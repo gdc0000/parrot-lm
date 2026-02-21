@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 def _is_retryable_exception(exception: BaseException) -> bool:
     """Retry transient failures, but not local validation errors."""
+    # Type/Value errors usually indicate bad caller input and will not succeed on retry.
     return not isinstance(exception, (TypeError, ValueError))
 
 
@@ -28,6 +29,7 @@ def _get_openrouter_api_key() -> str:
     if api_key:
         return api_key
 
+    # Load .env lazily so normal env-based deployments do not pay this cost on every import.
     load_dotenv()
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -93,7 +95,9 @@ class Agent:
         user_text = _validate_non_empty_string(input_text, "input_text")
         self.history.append({"role": "user", "content": user_text})
 
+        # One turn contributes two messages (user + assistant), so keep a bounded sliding window.
         max_messages = self.max_history_turns * 2
+        # System prompt is always reconstructed explicitly below to avoid duplicated system entries.
         relevant_history = self.history[1:]
         if len(relevant_history) > max_messages:
             relevant_history = relevant_history[-max_messages:]
@@ -178,6 +182,7 @@ class Orchestrator:
 
         self.persona_a_snapshot = agent_a_config.get("user_persona_snapshot", self.agent_a.system_prompt)
         self.persona_b_snapshot = agent_b_config.get("user_persona_snapshot", self.agent_b.system_prompt)
+        # Store prompt snapshots by agent name so log creation stays data-driven if names change later.
         self.system_prompt_snapshot_by_agent = {
             self.agent_a.name: self.persona_a_snapshot,
             self.agent_b.name: self.persona_b_snapshot,
@@ -252,6 +257,7 @@ class Orchestrator:
         log_entry = self._create_log_entry(turn_id, speaker, responder, response_data)
         self.logs.append(log_entry)
 
+        # Keep a non-empty handoff message so the next agent receives valid input even on blank output.
         next_message = response_data["content"] or "..."
         should_stop = bool(response_data["is_refusal"])
         if should_stop:

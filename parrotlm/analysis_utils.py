@@ -14,8 +14,10 @@ logger = logging.getLogger(__name__)
 
 _RESOURCE_PATHS = (
     ("tokenizers/punkt", "punkt"),
+    # Kept for compatibility with newer NLTK packaging where punkt tables are split out.
     ("tokenizers/punkt_tab", "punkt_tab"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
+    # Some environments resolve only the *_eng alias, so we validate both names.
     ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
     ("taggers/universal_tagset", "universal_tagset"),
 )
@@ -106,6 +108,7 @@ def _safe_analyze_text(value: Any) -> Dict[str, float]:
     try:
         return analyze_text(value)
     except Exception:
+        # Analysis is best-effort in the UI; one malformed row should not abort the whole tab.
         logger.exception("Failed to analyze a text row; using zeroed metrics.")
         return _empty_metrics()
 

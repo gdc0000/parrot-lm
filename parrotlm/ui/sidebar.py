@@ -22,6 +22,7 @@ class TechnicalSettings:
 def _apply_api_key_if_present(api_key: str) -> None:
     """Persist API key to environment only when user provides one."""
     if api_key:
+        # The orchestrator reads OPENROUTER_API_KEY, so mirror sidebar input to process env.
         os.environ["OPENROUTER_API_KEY"] = api_key
 
 

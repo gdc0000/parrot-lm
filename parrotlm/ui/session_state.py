@@ -41,6 +41,7 @@ def initialize_session_state(local_storage: Any) -> None:
 def _delete_local_storage_logs(local_storage: Any) -> None:
     """Delete logs from browser storage across supported local-storage adapters."""
     if hasattr(local_storage, "eraseItem"):
+        # Some streamlit-local-storage versions expose eraseItem instead of deleteItem.
         local_storage.eraseItem(LOCAL_STORAGE_LOG_KEY, default=None)
         return
 
@@ -60,6 +61,7 @@ def _merge_logs(current_df: pd.DataFrame, new_logs_df: pd.DataFrame) -> pd.DataF
     """Merge existing and new log rows into one dataframe."""
     if current_df.empty:
         return new_logs_df
+    # Reindex to keep a clean contiguous table for plotting and CSV export.
     return pd.concat([current_df, new_logs_df], ignore_index=True)
 
 

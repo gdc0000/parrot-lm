@@ -2,6 +2,7 @@
 
 # Number of turns for each agent in a simulation run.
 # Total messages = NUM_TURNS * 2
+# Default keeps demo runs short enough for interactive use and token-cost control.
 NUM_TURNS: int = 10
 
 # Output directory for persisted logs.

@@ -53,6 +53,7 @@ def _build_chatbot_config(
 
 def _build_scenario_name(persona_a: str, persona_b: str) -> str:
     """Build a short scenario label from both personas."""
+    # Keep scenario names compact so log views remain readable across many runs.
     return f"{persona_a[:15]} vs {persona_b[:15]}"
 
 
@@ -184,6 +185,7 @@ def _stream_simulation_messages(
         ):
             total_output_tokens += log_entry["output_tokens"]
             _render_chat_message(log_entry, model_a_slug, persona_a, persona_b, chat_container)
+            # Slight pacing keeps streamed messages readable and avoids UI burst updates.
             time.sleep(0.1)
 
     return total_output_tokens
@@ -206,6 +208,7 @@ def _render_chat_message(
     is_agent_a = log_entry["speaker_model"] == model_a_slug
     speaker_label = persona_a if is_agent_a else persona_b
 
+    # Clamp very long personas so chat headers do not dominate message content.
     if len(speaker_label) > MAX_SPEAKER_LABEL_LENGTH:
         speaker_label = f"{speaker_label[:47]}..."
 
