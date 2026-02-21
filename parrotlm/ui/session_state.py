@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pandas as pd
 import streamlit as st
 
 LOCAL_STORAGE_LOG_KEY = "parrot_lm_logs"
+logger = logging.getLogger(__name__)
 
 
 def _empty_logs_dataframe() -> pd.DataFrame:
@@ -17,13 +19,26 @@ def _empty_logs_dataframe() -> pd.DataFrame:
 
 def _load_persisted_logs(local_storage: Any) -> pd.DataFrame:
     """Load saved logs from local storage, returning an empty dataframe on failures."""
-    saved_logs = local_storage.getItem(LOCAL_STORAGE_LOG_KEY)
+    try:
+        saved_logs = local_storage.getItem(LOCAL_STORAGE_LOG_KEY)
+    except (AttributeError, TypeError, ValueError):
+        logger.exception(
+            "local_storage_read_failed | key=%s",
+            LOCAL_STORAGE_LOG_KEY,
+        )
+        return _empty_logs_dataframe()
+
     if not saved_logs:
         return _empty_logs_dataframe()
 
     try:
         return pd.DataFrame(saved_logs)
     except (TypeError, ValueError):
+        logger.warning(
+            "malformed_local_storage_logs_ignored | key=%s value_type=%s",
+            LOCAL_STORAGE_LOG_KEY,
+            type(saved_logs).__name__,
+        )
         return _empty_logs_dataframe()
 
 
@@ -42,13 +57,27 @@ def _delete_local_storage_logs(local_storage: Any) -> None:
     """Delete logs from browser storage across supported local-storage adapters."""
     if hasattr(local_storage, "eraseItem"):
         # Some streamlit-local-storage versions expose eraseItem instead of deleteItem.
-        local_storage.eraseItem(LOCAL_STORAGE_LOG_KEY, default=None)
+        try:
+            local_storage.eraseItem(LOCAL_STORAGE_LOG_KEY, default=None)
+        except (AttributeError, TypeError, ValueError):
+            logger.exception(
+                "local_storage_erase_failed | key=%s",
+                LOCAL_STORAGE_LOG_KEY,
+            )
         return
 
     try:
         local_storage.deleteItem(LOCAL_STORAGE_LOG_KEY)
     except KeyError:
-        pass
+        logger.info(
+            "local_storage_key_missing_on_delete | key=%s",
+            LOCAL_STORAGE_LOG_KEY,
+        )
+    except (AttributeError, TypeError, ValueError):
+        logger.exception(
+            "local_storage_delete_failed | key=%s",
+            LOCAL_STORAGE_LOG_KEY,
+        )
 
 
 def clear_local_data(local_storage: Any) -> None:
@@ -65,9 +94,18 @@ def _merge_logs(current_df: pd.DataFrame, new_logs_df: pd.DataFrame) -> pd.DataF
     return pd.concat([current_df, new_logs_df], ignore_index=True)
 
 
-def _persist_logs_to_local_storage(local_storage: Any, logs_df: pd.DataFrame) -> None:
+def _persist_logs_to_local_storage(local_storage: Any, logs_df: pd.DataFrame) -> bool:
     """Write the current log dataframe to local storage."""
-    local_storage.setItem(LOCAL_STORAGE_LOG_KEY, logs_df.to_dict("records"))
+    try:
+        local_storage.setItem(LOCAL_STORAGE_LOG_KEY, logs_df.to_dict("records"))
+    except (AttributeError, TypeError, ValueError):
+        logger.exception(
+            "local_storage_write_failed | key=%s row_count=%s",
+            LOCAL_STORAGE_LOG_KEY,
+            len(logs_df),
+        )
+        return False
+    return True
 
 
 def append_and_persist_logs(local_storage: Any, new_logs_df: pd.DataFrame) -> None:
@@ -75,4 +113,10 @@ def append_and_persist_logs(local_storage: Any, new_logs_df: pd.DataFrame) -> No
     current_df = st.session_state["all_logs"]
     updated_df = _merge_logs(current_df, new_logs_df)
     st.session_state["all_logs"] = updated_df
-    _persist_logs_to_local_storage(local_storage, updated_df)
+    saved = _persist_logs_to_local_storage(local_storage, updated_df)
+    if not saved:
+        logger.warning(
+            "local_storage_sync_skipped_after_failure | key=%s row_count=%s",
+            LOCAL_STORAGE_LOG_KEY,
+            len(updated_df),
+        )

@@ -1,7 +1,8 @@
 import os
-import unittest
 from types import SimpleNamespace
 from unittest.mock import mock_open, patch
+
+import pytest
 
 from parrotlm.orchestrator import Agent, Orchestrator
 
@@ -24,102 +25,214 @@ class _FakeOpenAIClient:
         self.chat = SimpleNamespace(completions=_FakeCompletions())
 
 
-class TestOrchestrator(unittest.TestCase):
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
-    def test_agent_generate_response_returns_expected_fields(self, _mock_openai):
-        agent = Agent(
-            model_slug="fake/model",
-            system_prompt="You are concise.",
-            name="Agent A",
-            max_history_turns=5,
+class _EmptyContentCompletions:
+    def create(self, model, messages, **kwargs):
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="   "),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=4, completion_tokens=0),
         )
 
-        response = agent.generate_response("hello")
 
-        self.assertEqual(response["content"], "mocked reply")
-        self.assertEqual(response["finish_reason"], "stop")
-        self.assertEqual(response["input_tokens"], 10)
-        self.assertEqual(response["output_tokens"], 5)
-        self.assertFalse(response["is_refusal"])
+class _EmptyContentOpenAIClient:
+    def __init__(self, *args, **kwargs):
+        self.chat = SimpleNamespace(completions=_EmptyContentCompletions())
 
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
-    def test_run_simulation_emits_two_entries_for_one_turn(self, _mock_openai):
-        agent_a_config = {
-            "model": "fake/model-a",
-            "system_prompt": "Persona A",
-            "user_persona_snapshot": "Persona A",
-        }
-        agent_b_config = {
-            "model": "fake/model-b",
-            "system_prompt": "Persona B",
-            "user_persona_snapshot": "Persona B",
-        }
 
-        orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
-        logs = list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_agent_generate_response_returns_expected_fields(_mock_openai):
+    agent = Agent(
+        model_slug="fake/model",
+        system_prompt="You are concise.",
+        name="Agent A",
+        max_history_turns=5,
+    )
 
-        self.assertEqual(len(logs), 2)
-        self.assertIn("content", logs[0])
-        self.assertIn("system_prompt_snapshot", logs[0])
+    response = agent.generate_response("hello")
 
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
-    def test_save_logs_works_with_plain_filename(self, _mock_openai):
-        agent_a_config = {
-            "model": "fake/model-a",
-            "system_prompt": "Persona A",
-            "user_persona_snapshot": "Persona A",
-        }
-        agent_b_config = {
-            "model": "fake/model-b",
-            "system_prompt": "Persona B",
-            "user_persona_snapshot": "Persona B",
-        }
+    assert response["content"] == "mocked reply"
+    assert response["finish_reason"] == "stop"
+    assert response["input_tokens"] == 10
+    assert response["output_tokens"] == 5
+    assert response["is_refusal"] is False
 
-        orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
-        list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
-        mocked_file = mock_open()
-        with patch("builtins.open", mocked_file):
-            orchestrator.save_logs("logs.jsonl")
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
+    agent_a_config = {
+        "model": "fake/model-a",
+        "system_prompt": "Persona A",
+        "user_persona_snapshot": "Persona A",
+    }
+    agent_b_config = {
+        "model": "fake/model-b",
+        "system_prompt": "Persona B",
+        "user_persona_snapshot": "Persona B",
+    }
 
-        write_calls = mocked_file().write.call_count
-        self.assertEqual(write_calls, 2)
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    logs = list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
-    def test_orchestrator_uses_distinct_history_windows_per_agent(self, _mock_openai):
-        agent_a_config = {
-            "model": "fake/model-a",
-            "system_prompt": "Persona A",
-            "max_history_turns": 3,
-        }
-        agent_b_config = {
-            "model": "fake/model-b",
-            "system_prompt": "Persona B",
-            "max_history_turns": 7,
-        }
+    assert len(logs) == 2
+    assert "content" in logs[0]
+    assert "system_prompt_snapshot" in logs[0]
 
-        orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
 
-        self.assertEqual(orchestrator.agent_a.max_history_turns, 3)
-        self.assertEqual(orchestrator.agent_b.max_history_turns, 7)
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_save_logs_works_with_plain_filename(_mock_openai):
+    agent_a_config = {
+        "model": "fake/model-a",
+        "system_prompt": "Persona A",
+        "user_persona_snapshot": "Persona A",
+    }
+    agent_b_config = {
+        "model": "fake/model-b",
+        "system_prompt": "Persona B",
+        "user_persona_snapshot": "Persona B",
+    }
 
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-    @patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
-    def test_orchestrator_rejects_non_dict_agent_params(self, _mock_openai):
-        agent_a_config = {
-            "model": "fake/model-a",
-            "system_prompt": "Persona A",
-            "params": ["invalid"],
-        }
-        agent_b_config = {
-            "model": "fake/model-b",
-            "system_prompt": "Persona B",
-        }
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
-        with self.assertRaises(TypeError):
-            Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    mocked_file = mock_open()
+    with patch("builtins.open", mocked_file):
+        orchestrator.save_logs("logs.jsonl")
 
+    write_calls = mocked_file().write.call_count
+    assert write_calls == 2
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_orchestrator_uses_distinct_history_windows_per_agent(_mock_openai):
+    agent_a_config = {
+        "model": "fake/model-a",
+        "system_prompt": "Persona A",
+        "max_history_turns": 3,
+    }
+    agent_b_config = {
+        "model": "fake/model-b",
+        "system_prompt": "Persona B",
+        "max_history_turns": 7,
+    }
+
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+
+    assert orchestrator.agent_a.max_history_turns == 3
+    assert orchestrator.agent_b.max_history_turns == 7
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_orchestrator_rejects_non_dict_agent_params(_mock_openai):
+    agent_a_config = {
+        "model": "fake/model-a",
+        "system_prompt": "Persona A",
+        "params": ["invalid"],
+    }
+    agent_b_config = {
+        "model": "fake/model-b",
+        "system_prompt": "Persona B",
+    }
+
+    with pytest.raises(TypeError):
+        Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_EmptyContentOpenAIClient)
+def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
+    agent = Agent(
+        model_slug="fake/model",
+        system_prompt="You are concise.",
+        name="Agent A",
+        max_history_turns=5,
+    )
+
+    response = agent.generate_response("hello")
+
+    assert response["content"] == ""
+    assert response["is_refusal"] is True
+    assert response["output_tokens"] == 0
+    assert len(agent.history) == 2  # system + user; assistant is not appended on blank content.
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
+    agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
+    agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+
+    refusal_response = {
+        "content": "",
+        "latency_ms": 1.0,
+        "input_tokens": 1,
+        "output_tokens": 0,
+        "finish_reason": "stop",
+        "is_refusal": True,
+    }
+
+    with patch.object(orchestrator.agent_a, "generate_response", return_value=refusal_response):
+        with patch.object(orchestrator.agent_b, "generate_response") as mock_agent_b_generate:
+            logs = list(orchestrator.run_simulation(num_turns=3, initial_message="Hi"))
+
+    assert len(logs) == 1
+    mock_agent_b_generate.assert_not_called()
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_run_simulation_wraps_agent_failure(_mock_openai):
+    agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
+    agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+
+    with patch.object(orchestrator.agent_a, "generate_response", side_effect=RuntimeError("api failure")):
+        with pytest.raises(RuntimeError) as raised:
+            list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
+
+    assert "Agent A failed on turn 0." in str(raised.value)
+    assert "api failure" in str(raised.value.__cause__)
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_save_logs_creates_directory_when_path_includes_folder(_mock_openai):
+    agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
+    agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
+
+    with patch("os.makedirs") as mock_makedirs:
+        with patch("builtins.open", mock_open()):
+            orchestrator.save_logs("nested/logs.jsonl")
+
+    mock_makedirs.assert_called_once_with("nested", exist_ok=True)
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.orchestrator.OpenAI", side_effect=_FakeOpenAIClient)
+def test_run_simulation_wraps_invalid_agent_payload(_mock_openai):
+    agent_a_config = {"model": "fake/model-a", "system_prompt": "Persona A"}
+    agent_b_config = {"model": "fake/model-b", "system_prompt": "Persona B"}
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+
+    invalid_payload = {
+        "content": "ok",
+        "latency_ms": 1.0,
+        # missing token and finish fields on purpose
+    }
+
+    with patch.object(orchestrator.agent_a, "generate_response", return_value=invalid_payload):
+        with pytest.raises(RuntimeError) as raised:
+            list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
+
+    assert "returned an invalid payload" in str(raised.value)

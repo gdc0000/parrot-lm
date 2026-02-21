@@ -1,18 +1,23 @@
-import unittest
+import pytest
 
 from parrotlm.prompt_utils import construct_system_prompt
 
 
-class TestPromptUtils(unittest.TestCase):
-    def test_construct_system_prompt_includes_persona_and_rules(self):
-        persona = "A curious engineer"
-        prompt = construct_system_prompt(persona)
+def test_construct_system_prompt_includes_persona_and_rules():
+    persona = "A curious engineer"
+    prompt = construct_system_prompt(persona)
 
-        self.assertIn(persona, prompt)
-        self.assertIn("DIALOGUE ONLY", prompt)
-        self.assertIn("YOUR PERSONA", prompt)
+    assert persona in prompt
+    assert "DIALOGUE ONLY" in prompt
+    assert "YOUR PERSONA" in prompt
 
-    def test_construct_system_prompt_rejects_empty_persona(self):
-        with self.assertRaises(ValueError):
-            construct_system_prompt("   ")
+
+def test_construct_system_prompt_rejects_empty_persona():
+    with pytest.raises(ValueError):
+        construct_system_prompt("   ")
+
+
+def test_construct_system_prompt_rejects_non_string_persona():
+    with pytest.raises(ValueError):
+        construct_system_prompt(123)  # type: ignore[arg-type]
 

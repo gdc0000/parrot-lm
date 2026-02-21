@@ -8,6 +8,10 @@ This folder contains unit tests for the ParrotLM core package (`parrotlm`).
 - `test_analysis_utils.py`
 - `test_orchestrator.py`
 - `test_session_state.py`
+- `test_sidebar.py`
+- `test_chat_setup_tab.py`
+- `test_analysis_tabs.py`
+- `test_integration_pipeline.py`
 
 ## Test Files
 
@@ -64,14 +68,53 @@ Why:
 - Session-state and local persistence are critical to consistent UI behavior.
 - These tests protect against regressions in log initialization, reset, and persistence flow.
 
+### `test_sidebar.py`
+What it does:
+- Verifies API-key environment synchronization behavior.
+- Verifies `render_sidebar` maps Streamlit control values into `TechnicalSettings` correctly.
+- Verifies blank API key input does not overwrite an existing env key.
+
+Why:
+- Sidebar values feed runtime orchestration parameters directly.
+- These tests catch configuration regressions before they impact live simulation runs.
+
+### `test_chat_setup_tab.py`
+What it does:
+- Verifies scenario naming behavior.
+- Verifies simulation execution success/failure handling in `_execute_simulation`.
+- Verifies log persistence path converts simulation logs into a dataframe before storage sync.
+
+Why:
+- Chat setup is the main user workflow entrypoint.
+- These tests ensure API/runtime failures are surfaced safely and success paths persist data as expected.
+
+### `test_analysis_tabs.py`
+What it does:
+- Verifies custom lexicon normalization behavior.
+- Verifies aggregate metric computation used by charts.
+
+Why:
+- Analysis output powers user-facing comparisons and exported CSV data.
+- Helper-level tests keep analysis transformations stable during refactors.
+
+### `test_integration_pipeline.py`
+What it does:
+- Runs an integration-style pipeline from orchestrator output -> session persistence -> analysis processing.
+- Uses mocked OpenAI responses to keep the flow deterministic.
+
+Why:
+- Confirms cross-module contracts work together, not only in isolated unit tests.
+- Provides a higher-confidence regression safety net for end-to-end data flow.
+
 ## Run Tests
 From project root:
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py"
+python -m pytest -q
 ```
 
 ## Design Notes
-- Tests are unit-level and intentionally isolate external services.
+- Most tests are unit-level and intentionally isolate external services.
+- Integration-style coverage is included where feasible (see `test_integration_pipeline.py`).
 - External dependencies (OpenRouter/OpenAI, NLTK downloads) are mocked to avoid flaky CI behavior.
 - Coverage is focused on contract stability (inputs/outputs/fields), not UI rendering.

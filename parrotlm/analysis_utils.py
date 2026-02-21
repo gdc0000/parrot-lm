@@ -37,28 +37,43 @@ def _empty_metrics() -> Dict[str, float]:
     }
 
 
-def ensure_nltk_resources(download_missing: bool = False) -> None:
-    """Validate required NLTK resources and optionally download missing ones."""
+def _get_missing_nltk_resources() -> list[str]:
+    """Return missing NLTK download names required by the analysis pipeline."""
     missing: list[str] = []
+
     for resource_path, download_name in _RESOURCE_PATHS:
         try:
             nltk.data.find(resource_path)
         except LookupError:
             missing.append(download_name)
 
+    return sorted(set(missing))
+
+
+def ensure_nltk_resources(download_missing: bool = False) -> None:
+    """Validate required NLTK resources and optionally download missing ones."""
+    missing = _get_missing_nltk_resources()
+
     if not missing:
         return
 
-    if download_missing:
-        for download_name in missing:
-            nltk.download(download_name, quiet=True)
-        return ensure_nltk_resources(download_missing=False)
+    if not download_missing:
+        missing_csv = ", ".join(missing)
+        raise RuntimeError(
+            "Missing NLTK resources. Run `python -c \"import nltk; "
+            f"[nltk.download(r) for r in {missing}]\"` to install: {missing_csv}."
+        )
 
-    missing_csv = ", ".join(sorted(set(missing)))
-    raise RuntimeError(
-        "Missing NLTK resources. Run `python -c \"import nltk; "
-        f"[nltk.download(r) for r in {sorted(set(missing))}]\"` to install: {missing_csv}."
-    )
+    for download_name in missing:
+        nltk.download(download_name, quiet=True)
+
+    remaining_missing = _get_missing_nltk_resources()
+    if remaining_missing:
+        remaining_missing_csv = ", ".join(remaining_missing)
+        raise RuntimeError(
+            "Missing NLTK resources. Run `python -c \"import nltk; "
+            f"[nltk.download(r) for r in {remaining_missing}]\"` to install: {remaining_missing_csv}."
+        )
 
 
 def _ensure_nltk_ready() -> None:

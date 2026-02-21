@@ -17,6 +17,15 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 logger = logging.getLogger(__name__)
 
 
+def _log_structured(level: int, event: str, **context: Any) -> None:
+    """Log one event with machine-readable context for easier debugging."""
+    try:
+        context_json = json.dumps(context, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        context_json = str(context)
+    logger.log(level, "%s | %s", event, context_json)
+
+
 def _is_retryable_exception(exception: BaseException) -> bool:
     """Retry transient failures, but not local validation errors."""
     # Type/Value errors usually indicate bad caller input and will not succeed on retry.
@@ -58,6 +67,36 @@ def _validate_generation_params(params: Any, field_name: str) -> Dict[str, Any]:
     if not isinstance(params, dict):
         raise TypeError(f"`{field_name}` must be a dictionary.")
     return params
+
+
+def _normalize_response_data(response_data: Any) -> Dict[str, Any]:
+    """Validate and normalize one agent response payload."""
+    if not isinstance(response_data, dict):
+        raise TypeError("`response_data` must be a dictionary.")
+
+    required_fields = [
+        "content",
+        "latency_ms",
+        "input_tokens",
+        "output_tokens",
+        "finish_reason",
+        "is_refusal",
+    ]
+    missing_fields = [field for field in required_fields if field not in response_data]
+    if missing_fields:
+        missing_csv = ", ".join(missing_fields)
+        raise KeyError(f"Missing response fields: {missing_csv}")
+
+    content_value = str(response_data["content"] or "").strip()
+    normalized_response = {
+        "content": content_value,
+        "latency_ms": float(response_data["latency_ms"]),
+        "input_tokens": int(response_data["input_tokens"]),
+        "output_tokens": int(response_data["output_tokens"]),
+        "finish_reason": str(response_data["finish_reason"] or "unknown"),
+        "is_refusal": bool(response_data["is_refusal"]),
+    }
+    return normalized_response
 
 
 class Agent:
@@ -182,11 +221,6 @@ class Orchestrator:
 
         self.persona_a_snapshot = agent_a_config.get("user_persona_snapshot", self.agent_a.system_prompt)
         self.persona_b_snapshot = agent_b_config.get("user_persona_snapshot", self.agent_b.system_prompt)
-        # Store prompt snapshots by agent name so log creation stays data-driven if names change later.
-        self.system_prompt_snapshot_by_agent = {
-            self.agent_a.name: self.persona_a_snapshot,
-            self.agent_b.name: self.persona_b_snapshot,
-        }
         self.agent_a_params = _validate_generation_params(
             agent_a_config.get("params"),
             "agent_a_config['params']",
@@ -207,10 +241,12 @@ class Orchestrator:
             raise ValueError("`num_turns` must be a positive integer.")
         last_message = _validate_non_empty_string(initial_message, "initial_message")
 
-        logger.info(
-            "Starting simulation %s - Scenario: %s",
-            self.experiment_id,
-            self.scenario_name,
+        _log_structured(
+            logging.INFO,
+            "simulation_started",
+            experiment_id=self.experiment_id,
+            scenario=self.scenario_name,
+            turns_requested=num_turns,
         )
 
         for turn_id in range(num_turns):
@@ -218,6 +254,7 @@ class Orchestrator:
                 turn_id=turn_id,
                 speaker=self.agent_a,
                 responder=self.agent_b,
+                system_prompt_snapshot=self.persona_a_snapshot,
                 input_message=last_message,
                 generation_params=self.agent_a_params,
             )
@@ -229,6 +266,7 @@ class Orchestrator:
                 turn_id=turn_id,
                 speaker=self.agent_b,
                 responder=self.agent_a,
+                system_prompt_snapshot=self.persona_b_snapshot,
                 input_message=last_message,
                 generation_params=self.agent_b_params,
             )
@@ -236,13 +274,19 @@ class Orchestrator:
             if should_stop:
                 break
 
-        logger.info("Simulation %s completed.", self.experiment_id)
+        _log_structured(
+            logging.INFO,
+            "simulation_completed",
+            experiment_id=self.experiment_id,
+            generated_log_entries=len(self.logs),
+        )
 
     def _run_single_agent_turn(
         self,
         turn_id: int,
         speaker: Agent,
         responder: Agent,
+        system_prompt_snapshot: str,
         input_message: str,
         generation_params: Dict[str, Any],
     ) -> Tuple[Dict[str, Any], str, bool]:
@@ -254,14 +298,36 @@ class Orchestrator:
             logger.exception("Failed turn %s for %s.", turn_id, speaker.name)
             raise RuntimeError(f"{speaker.name} failed on turn {turn_id}.") from exception
 
-        log_entry = self._create_log_entry(turn_id, speaker, responder, response_data)
+        try:
+            normalized_response_data = _normalize_response_data(response_data)
+        except (KeyError, TypeError, ValueError) as exception:
+            logger.exception(
+                "invalid_response_payload | speaker=%s turn_id=%s",
+                speaker.name,
+                turn_id,
+            )
+            raise RuntimeError(f"{speaker.name} returned an invalid payload on turn {turn_id}.") from exception
+
+        log_entry = self._create_log_entry(
+            turn_id=turn_id,
+            speaker=speaker,
+            responder=responder,
+            response_data=normalized_response_data,
+            system_prompt_snapshot=system_prompt_snapshot,
+        )
         self.logs.append(log_entry)
 
         # Keep a non-empty handoff message so the next agent receives valid input even on blank output.
-        next_message = response_data["content"] or "..."
-        should_stop = bool(response_data["is_refusal"])
+        next_message = normalized_response_data["content"] or "..."
+        should_stop = bool(normalized_response_data["is_refusal"])
         if should_stop:
-            logger.warning("%s refused to respond. Ending simulation.", speaker.name)
+            _log_structured(
+                logging.WARNING,
+                "agent_refusal_detected",
+                experiment_id=self.experiment_id,
+                turn_id=turn_id,
+                speaker=speaker.name,
+            )
 
         return log_entry, next_message, should_stop
 
@@ -271,6 +337,7 @@ class Orchestrator:
         speaker: Agent,
         responder: Agent,
         response_data: Dict[str, Any],
+        system_prompt_snapshot: str,
     ) -> Dict[str, Any]:
         """Create a normalized log dictionary for one model output."""
         return {
@@ -286,10 +353,7 @@ class Orchestrator:
             "content": response_data["content"],
             "finish_reason": response_data["finish_reason"],
             "is_refusal": response_data["is_refusal"],
-            "system_prompt_snapshot": self.system_prompt_snapshot_by_agent.get(
-                speaker.name,
-                speaker.system_prompt,
-            ),
+            "system_prompt_snapshot": system_prompt_snapshot,
         }
 
     def save_logs(self, filepath: str) -> None:
@@ -307,4 +371,9 @@ class Orchestrator:
             logger.exception("Failed to save logs to %s", output_path)
             raise
 
-        logger.info("Logs saved to %s", output_path)
+        _log_structured(
+            logging.INFO,
+            "logs_saved",
+            filepath=output_path,
+            entries_saved=len(self.logs),
+        )

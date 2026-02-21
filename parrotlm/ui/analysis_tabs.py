@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, List
 
 import pandas as pd
@@ -9,6 +10,16 @@ import plotly.express as px
 import streamlit as st
 
 from parrotlm.analysis_utils import process_custom_lexicon, process_logs
+
+logger = logging.getLogger(__name__)
+
+
+def _ensure_required_columns(df: pd.DataFrame, required_columns: List[str], context: str) -> None:
+    """Raise a clear KeyError when required dataframe columns are missing."""
+    missing_columns = [column for column in required_columns if column not in df.columns]
+    if missing_columns:
+        missing_csv = ", ".join(missing_columns)
+        raise KeyError(f"Missing required columns for {context}: {missing_csv}")
 
 
 def render_basic_analysis_tab() -> None:
@@ -24,13 +35,25 @@ def render_basic_analysis_tab() -> None:
 
     st.dataframe(all_logs)
 
-    st.subheader("Metrics Overview")
-    avg_latency_by_model, avg_tokens_by_model = _compute_basic_metrics(all_logs)
-    _render_basic_metric_charts(avg_latency_by_model, avg_tokens_by_model)
+    try:
+        st.subheader("Metrics Overview")
+        avg_latency_by_model, avg_tokens_by_model = _compute_basic_metrics(all_logs)
+        _render_basic_metric_charts(avg_latency_by_model, avg_tokens_by_model)
+    except (KeyError, TypeError, ValueError):
+        logger.exception(
+            "basic_analysis_render_failed | columns=%s",
+            list(all_logs.columns),
+        )
+        st.error("Could not render basic analysis due to malformed log data.")
 
 
 def _compute_basic_metrics(all_logs: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Compute average latency and token usage per speaker model."""
+    _ensure_required_columns(
+        all_logs,
+        required_columns=["speaker_model", "latency_ms", "output_tokens"],
+        context="basic metrics",
+    )
     avg_latency_by_model = all_logs.groupby("speaker_model")["latency_ms"].mean().reset_index()
     avg_tokens_by_model = all_logs.groupby("speaker_model")["output_tokens"].mean().reset_index()
     return avg_latency_by_model, avg_tokens_by_model
@@ -78,16 +101,23 @@ def render_stylometric_analysis_tab() -> None:
         st.warning("No data found.")
         return
 
-    analyzed_df = _run_stylometric_analysis(all_logs, category_dict)
+    try:
+        analyzed_df = _run_stylometric_analysis(all_logs, category_dict)
 
-    st.success("Analysis complete.")
-    st.dataframe(analyzed_df)
+        st.success("Analysis complete.")
+        st.dataframe(analyzed_df)
+        _render_analysis_download_button(analyzed_df)
 
-    _render_analysis_download_button(analyzed_df)
-
-    _render_pos_chart(analyzed_df)
-    if category_dict:
-        _render_custom_lexicon_chart(analyzed_df, category_dict)
+        _render_pos_chart(analyzed_df)
+        if category_dict:
+            _render_custom_lexicon_chart(analyzed_df, category_dict)
+    except (KeyError, RuntimeError, TypeError, ValueError):
+        logger.exception(
+            "stylometric_analysis_failed | rows=%s columns=%s",
+            len(all_logs),
+            list(all_logs.columns),
+        )
+        st.error("Could not complete stylometric analysis due to malformed or incomplete data.")
 
 
 def _run_stylometric_analysis(
@@ -183,6 +213,11 @@ def _render_pos_chart(analyzed_df: pd.DataFrame) -> None:
     """Render grouped POS-ratio bars per speaker model."""
     st.subheader("Linguistic Patterns")
     pos_columns = ["noun_ratio", "verb_ratio", "adj_ratio", "adv_ratio"]
+    _ensure_required_columns(
+        analyzed_df,
+        required_columns=["speaker_model"] + pos_columns,
+        context="POS chart",
+    )
     avg_pos_by_model = analyzed_df.groupby("speaker_model")[pos_columns].mean().reset_index()
     melted_pos = avg_pos_by_model.melt(id_vars="speaker_model", var_name="POS Type", value_name="Ratio")
     pos_chart = px.bar(
@@ -200,6 +235,11 @@ def _render_custom_lexicon_chart(analyzed_df: pd.DataFrame, category_dict: Dict[
     """Render grouped custom-lexicon bars per speaker model."""
     st.subheader("Custom Category Frequencies")
     lexicon_columns = list(category_dict.keys())
+    _ensure_required_columns(
+        analyzed_df,
+        required_columns=["speaker_model"] + lexicon_columns,
+        context="custom lexicon chart",
+    )
     avg_lexicon_by_model = analyzed_df.groupby("speaker_model")[lexicon_columns].mean().reset_index()
     melted_lexicon = avg_lexicon_by_model.melt(
         id_vars="speaker_model",

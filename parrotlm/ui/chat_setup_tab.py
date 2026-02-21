@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List
@@ -20,6 +21,7 @@ DEFAULT_INITIAL_MESSAGE = (
     "I'd like to align on the objectives and understand your current priorities."
 )
 MAX_SPEAKER_LABEL_LENGTH = 50
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -157,7 +159,13 @@ def _execute_simulation(
             persona_b=chat_inputs.persona_b,
             chat_container=chat_container,
         )
-    except (ValueError, TypeError, RuntimeError, OSError) as error:
+    except (KeyError, ValueError, TypeError, RuntimeError, OSError) as error:
+        logger.exception(
+            "simulation_execution_failed | model_a=%s model_b=%s turns=%s",
+            chat_inputs.model_a_slug,
+            chat_inputs.model_b_slug,
+            settings.num_turns,
+        )
         st.error(f"Simulation error: {error}")
         st.info("Tip: try increasing 'Max Tokens' if the API fails with low values.")
         return None
@@ -183,8 +191,24 @@ def _stream_simulation_messages(
             num_turns,
             initial_message=initial_message,
         ):
-            total_output_tokens += log_entry["output_tokens"]
-            _render_chat_message(log_entry, model_a_slug, persona_a, persona_b, chat_container)
+            output_tokens_raw = log_entry.get("output_tokens", 0)
+            try:
+                total_output_tokens += int(output_tokens_raw)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "invalid_output_tokens_in_log_entry | value=%s",
+                    output_tokens_raw,
+                )
+
+            try:
+                _render_chat_message(log_entry, model_a_slug, persona_a, persona_b, chat_container)
+            except (KeyError, TypeError, ValueError):
+                logger.exception(
+                    "chat_message_render_failed | speaker_model=%s turn_id=%s",
+                    log_entry.get("speaker_model", "unknown"),
+                    log_entry.get("turn_id", "unknown"),
+                )
+
             # Slight pacing keeps streamed messages readable and avoids UI burst updates.
             time.sleep(0.1)
 
@@ -205,8 +229,21 @@ def _render_chat_message(
     chat_container: Any,
 ) -> None:
     """Render one message bubble and its metadata row."""
-    is_agent_a = log_entry["speaker_model"] == model_a_slug
+    speaker_model = str(log_entry.get("speaker_model", "unknown"))
+    is_agent_a = speaker_model == model_a_slug
     speaker_label = persona_a if is_agent_a else persona_b
+    message_content = str(log_entry.get("content", ""))
+
+    latency_raw = log_entry.get("latency_ms", 0)
+    tokens_raw = log_entry.get("output_tokens", 0)
+    try:
+        latency_display = f"{float(latency_raw):.0f}ms"
+    except (TypeError, ValueError):
+        latency_display = "n/a"
+    try:
+        tokens_display = str(int(tokens_raw))
+    except (TypeError, ValueError):
+        tokens_display = "n/a"
 
     # Clamp very long personas so chat headers do not dominate message content.
     if len(speaker_label) > MAX_SPEAKER_LABEL_LENGTH:
@@ -214,13 +251,13 @@ def _render_chat_message(
 
     with chat_container:
         with st.chat_message(name=speaker_label):
-            st.write(log_entry["content"])
+            st.write(message_content)
 
         st.markdown(
             f"<div style='text-align: right; margin-top: -15px; margin-bottom: 10px;'>"
             f"<span style='color: gray; font-size: 0.8rem;'>"
-            f"Latency {log_entry['latency_ms']:.0f}ms | Tokens {log_entry['output_tokens']} | "
-            f"Model {log_entry['speaker_model']}"
+            f"Latency {latency_display} | Tokens {tokens_display} | "
+            f"Model {speaker_model}"
             f"</span></div>",
             unsafe_allow_html=True,
         )
