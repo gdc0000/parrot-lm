@@ -19,27 +19,14 @@ class TechnicalSettings:
     context_window: int
 
 
-def render_sidebar(default_turns: int) -> tuple[TechnicalSettings, bool]:
-    """Render sidebar inputs and return user-selected settings."""
-    st.sidebar.header("Technical Settings")
-
-    api_key = st.sidebar.text_input("OpenRouter API Key", type="password")
+def _apply_api_key_if_present(api_key: str) -> None:
+    """Persist API key to environment only when user provides one."""
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
 
-    clear_requested = st.sidebar.button(
-        "Clear Local Data",
-        help="Wipes all conversation history from your browser storage.",
-    )
 
-    num_turns = st.sidebar.slider(
-        "Turns per Chatbot",
-        1,
-        100,
-        default_turns,
-        help="The number of times each chatbot will speak. Total messages = Turns * 2.",
-    )
-
+def _render_model_parameter_controls() -> tuple[float, float, int, int]:
+    """Render model parameter controls and return selected values."""
     st.sidebar.markdown("### Model Parameters")
     temp_a = st.sidebar.slider(
         "Chatbot A Temperature",
@@ -70,6 +57,30 @@ def render_sidebar(default_turns: int) -> tuple[TechnicalSettings, bool]:
             "Lower values reduce context, higher values keep more history."
         ),
     )
+    return temp_a, temp_b, max_tokens, context_window
+
+
+def render_sidebar(default_turns: int) -> tuple[TechnicalSettings, bool]:
+    """Render sidebar inputs and return user-selected settings."""
+    st.sidebar.header("Technical Settings")
+
+    api_key = st.sidebar.text_input("OpenRouter API Key", type="password")
+    _apply_api_key_if_present(api_key)
+
+    clear_requested = st.sidebar.button(
+        "Clear Local Data",
+        help="Wipes all conversation history from your browser storage.",
+    )
+
+    num_turns = st.sidebar.slider(
+        "Turns per Chatbot",
+        1,
+        100,
+        default_turns,
+        help="The number of times each chatbot will speak. Total messages = Turns * 2.",
+    )
+
+    temp_a, temp_b, max_tokens, context_window = _render_model_parameter_controls()
 
     settings = TechnicalSettings(
         num_turns=num_turns,

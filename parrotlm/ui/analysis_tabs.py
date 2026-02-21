@@ -25,10 +25,22 @@ def render_basic_analysis_tab() -> None:
     st.dataframe(all_logs)
 
     st.subheader("Metrics Overview")
+    avg_latency_by_model, avg_tokens_by_model = _compute_basic_metrics(all_logs)
+    _render_basic_metric_charts(avg_latency_by_model, avg_tokens_by_model)
+
+
+def _compute_basic_metrics(all_logs: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Compute average latency and token usage per speaker model."""
+    avg_latency_by_model = all_logs.groupby("speaker_model")["latency_ms"].mean().reset_index()
+    avg_tokens_by_model = all_logs.groupby("speaker_model")["output_tokens"].mean().reset_index()
+    return avg_latency_by_model, avg_tokens_by_model
+
+
+def _render_basic_metric_charts(avg_latency_by_model: pd.DataFrame, avg_tokens_by_model: pd.DataFrame) -> None:
+    """Render basic aggregate metric charts from precomputed data."""
     latency_column, tokens_column = st.columns(2)
 
     with latency_column:
-        avg_latency_by_model = all_logs.groupby("speaker_model")["latency_ms"].mean().reset_index()
         latency_chart = px.bar(
             avg_latency_by_model,
             x="speaker_model",
@@ -38,7 +50,6 @@ def render_basic_analysis_tab() -> None:
         st.plotly_chart(latency_chart, use_container_width=True)
 
     with tokens_column:
-        avg_tokens_by_model = all_logs.groupby("speaker_model")["output_tokens"].mean().reset_index()
         tokens_chart = px.bar(
             avg_tokens_by_model,
             x="speaker_model",
@@ -67,14 +78,33 @@ def render_stylometric_analysis_tab() -> None:
         st.warning("No data found.")
         return
 
+    analyzed_df = _run_stylometric_analysis(all_logs, category_dict)
+
+    st.success("Analysis complete.")
+    st.dataframe(analyzed_df)
+
+    _render_analysis_download_button(analyzed_df)
+
+    _render_pos_chart(analyzed_df)
+    if category_dict:
+        _render_custom_lexicon_chart(analyzed_df, category_dict)
+
+
+def _run_stylometric_analysis(
+    all_logs: pd.DataFrame,
+    category_dict: Dict[str, List[str]],
+) -> pd.DataFrame:
+    """Process log text into stylometric metrics and optional custom lexicon counts."""
     with st.spinner("Processing text..."):
         analyzed_df = process_logs(all_logs)
         if category_dict:
             analyzed_df = process_custom_lexicon(analyzed_df, category_dict)
 
-    st.success("Analysis complete.")
-    st.dataframe(analyzed_df)
+    return analyzed_df
 
+
+def _render_analysis_download_button(analyzed_df: pd.DataFrame) -> None:
+    """Render CSV download action for analyzed dataframe output."""
     csv_data = analyzed_df.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="Download Analysis as CSV",
@@ -82,10 +112,6 @@ def render_stylometric_analysis_tab() -> None:
         file_name="stylometric_analysis.csv",
         mime="text/csv",
     )
-
-    _render_pos_chart(analyzed_df)
-    if category_dict:
-        _render_custom_lexicon_chart(analyzed_df, category_dict)
 
 
 def _initialize_lexicon_state() -> None:
