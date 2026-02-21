@@ -35,29 +35,29 @@ def _build_chatbot_config(
 
 def render_chatbot_setup_tab(settings: TechnicalSettings, local_storage: Any) -> None:
     """Render chatbot setup controls and execute the conversation simulation."""
-    st.markdown("### 🎭 Configure the Encounter")
+    st.markdown("### Configuration")
 
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("#### Chatbot A")
         model_a_slug = st.text_input(
             "Model A Slug",
-            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            "google/gemini-2.5-flash-lite",
             key="model_a",
         )
-        persona_a = st.text_area("Persona", "A mysterious stranger at a jazz club", height=100)
+        persona_a = st.text_area("Persona", "Chief Technology Officer", height=100)
 
     with col2:
         st.markdown("#### Chatbot B")
         model_b_slug = st.text_input(
             "Model B Slug",
-            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            "google/gemini-2.5-flash-lite",
             key="model_b",
         )
-        persona_b = st.text_area("Persona", "A sharp-witted bartender", height=100)
+        persona_b = st.text_area("Persona", "Financial Analyst", height=100)
 
     st.markdown("---")
-    initial_message = st.text_input("The conversation starts with:", "Is this seat taken?")
+    initial_message = st.text_input("The conversation starts with:", "I’d like to align on the objectives and understand your current priorities.")
 
     if not st.button("🚀 Start Conversation", type="primary", width="stretch"):
         return
