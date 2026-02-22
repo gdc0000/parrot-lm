@@ -10,3 +10,4 @@ vega-datasets
 jinja2
 numpy>=1.21.0
 openai
+supabase>=2.0.0

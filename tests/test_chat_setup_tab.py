@@ -86,12 +86,13 @@ def test_persist_simulation_logs_converts_to_dataframe():
     def _capture_append(_storage, df):
         captured["df"] = df
 
-    fake_streamlit = SimpleNamespace(success=lambda _message: None)
+    fake_streamlit = SimpleNamespace(success=lambda _message: None, warning=lambda _message: None)
     simulation_logs = [{"content": "a"}, {"content": "b"}]
 
     with patch.object(chat_setup_tab, "st", fake_streamlit):
         with patch.object(chat_setup_tab, "append_and_persist_logs", side_effect=_capture_append):
-            chat_setup_tab._persist_simulation_logs(local_storage=object(), simulation_logs=simulation_logs)
+            with patch("parrotlm.supabase_logger.upload_session_logs", return_value=True):
+                chat_setup_tab._persist_simulation_logs(local_storage=object(), simulation_logs=simulation_logs)
 
     assert isinstance(captured["df"], pd.DataFrame)
     assert len(captured["df"]) == 2

@@ -216,9 +216,20 @@ def _stream_simulation_messages(
 
 
 def _persist_simulation_logs(local_storage: Any, simulation_logs: List[Dict[str, Any]]) -> None:
-    """Persist generated simulation logs to session state and local storage."""
+    """Persist generated simulation logs to session state, local storage, and Supabase."""
     append_and_persist_logs(local_storage, pd.DataFrame(simulation_logs))
     st.success("Simulation finished and persisted locally.")
+
+    # Cloud export (best-effort — never blocks the UI flow).
+    from parrotlm.supabase_client import get_supabase_client
+    from parrotlm.supabase_logger import upload_session_logs
+
+    if not get_supabase_client():
+        st.warning("⚠️ Cloud export skipped — check SUPABASE_URL and SUPABASE_ANON_KEY in .env.")
+    elif upload_session_logs(simulation_logs):
+        st.success("✅ Session logs exported to Supabase.")
+    else:
+        st.error("❌ Cloud export failed — ensure the 'session_logs' table exists in Supabase.")
 
 
 def _render_chat_message(
