@@ -39,11 +39,15 @@ class TestUploadSessionLogs:
         reset_client()
 
     def test_empty_logs_returns_true(self):
-        assert supabase_logger.upload_session_logs([]) is True
+        result = supabase_logger.upload_session_logs([])
+        assert result[0] is True
+        assert isinstance(result[1], str)
 
     @patch("parrotlm.supabase_logger.get_supabase_client", return_value=None)
     def test_returns_false_when_client_unavailable(self, _mock_client):
-        assert supabase_logger.upload_session_logs(_sample_logs()) is False
+        result = supabase_logger.upload_session_logs(_sample_logs())
+        assert result[0] is False
+        assert isinstance(result[1], str)
 
     @patch("parrotlm.supabase_logger.get_supabase_client")
     def test_returns_true_on_successful_insert(self, mock_get_client):
@@ -57,7 +61,8 @@ class TestUploadSessionLogs:
 
         result = supabase_logger.upload_session_logs(_sample_logs())
 
-        assert result is True
+        assert result[0] is True
+        assert isinstance(result[1], str)
         mock_client.table.assert_called_once_with("session_logs")
         inserted_rows = mock_table.insert.call_args[0][0]
         assert len(inserted_rows) == 1
@@ -73,7 +78,8 @@ class TestUploadSessionLogs:
 
         result = supabase_logger.upload_session_logs(_sample_logs())
 
-        assert result is False
+        assert result[0] is False
+        assert isinstance(result[1], str)
 
     def test_clean_log_entry_strips_unknown_keys(self):
         entry = {"experiment_id": "e1", "unknown_key": "discard", "turn_id": 0}

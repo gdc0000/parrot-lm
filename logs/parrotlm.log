@@ -1,0 +1,10 @@
+{"event": "simulation_started", "experiment_id": "d21b72ff-8c05-49c6-9af5-80120cf5597d", "level": "INFO", "scenario": "simulation", "taskName": null, "timestamp": "2026-02-23T23:08:10.842268+00:00", "turns_requested": 10}
+{"event": "Turn 0: Agent A generating response...", "level": "INFO", "taskName": null, "timestamp": "2026-02-23T23:08:10.842832+00:00"}
+{"event": "HTTP Request: POST https://openrouter.ai/api/v1/chat/completions \"HTTP/1.1 401 Unauthorized\"", "level": "INFO", "taskName": null, "timestamp": "2026-02-23T23:08:11.665446+00:00"}
+{"event": "OpenRouter request failed for Agent A.", "level": "ERROR", "taskName": null, "timestamp": "2026-02-23T23:08:11.666517+00:00"}
+{"event": "HTTP Request: POST https://openrouter.ai/api/v1/chat/completions \"HTTP/1.1 401 Unauthorized\"", "level": "INFO", "taskName": null, "timestamp": "2026-02-23T23:08:13.767085+00:00"}
+{"event": "OpenRouter request failed for Agent A.", "level": "ERROR", "taskName": null, "timestamp": "2026-02-23T23:08:13.780610+00:00"}
+{"event": "HTTP Request: POST https://openrouter.ai/api/v1/chat/completions \"HTTP/1.1 401 Unauthorized\"", "level": "INFO", "taskName": null, "timestamp": "2026-02-23T23:08:15.863017+00:00"}
+{"event": "OpenRouter request failed for Agent A.", "level": "ERROR", "taskName": null, "timestamp": "2026-02-23T23:08:15.864977+00:00"}
+{"event": "Failed turn 0 for Agent A.", "level": "ERROR", "taskName": null, "timestamp": "2026-02-23T23:08:15.865776+00:00"}
+{"error": "Agent A failed on turn 0.", "event": "unhandled_exception", "exception_type": "RuntimeError", "level": "CRITICAL", "taskName": null, "timestamp": "2026-02-23T23:08:15.866459+00:00"}

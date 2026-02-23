@@ -1,17 +1,62 @@
-"""Default configuration values used by the simulation runtime."""
+"""Simulation configuration model and environment loader."""
 
-# Number of turns for each agent in a simulation run.
-# Total messages = NUM_TURNS * 2
-# Default keeps demo runs short enough for interactive use and token-cost control.
-NUM_TURNS: int = 10
+from __future__ import annotations
 
-# Output directory for persisted logs.
-DATA_DIR: str = "data"
+import os
+from dataclasses import dataclass
 
 
-def validate_simulation_config(num_turns: int = NUM_TURNS, data_dir: str = DATA_DIR) -> None:
-    """Validate core configuration values and raise a clear error if invalid."""
-    if not isinstance(num_turns, int) or num_turns <= 0:
-        raise ValueError("`num_turns` must be a positive integer.")
-    if not isinstance(data_dir, str) or not data_dir.strip():
-        raise ValueError("`data_dir` must be a non-empty string.")
+def _get_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _get_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+@dataclass(frozen=True)
+class SimulationConfig:
+    model_a: str
+    model_b: str
+    persona_a: str
+    persona_b: str
+    num_turns: int
+    initial_message: str
+    max_tokens: int
+    temperature_a: float
+    temperature_b: float
+    context_window: int
+    supabase_url: str
+    supabase_key: str
+
+    @classmethod
+    def from_env(cls) -> "SimulationConfig":
+        return cls(
+            model_a=os.getenv("MODEL_A", "openai/gpt-4o-mini"),
+            model_b=os.getenv("MODEL_B", "openai/gpt-4o-mini"),
+            persona_a=os.getenv("PERSONA_A", "Chief Technology Officer"),
+            persona_b=os.getenv("PERSONA_B", "Financial Analyst"),
+            num_turns=_get_int("NUM_TURNS", 10),
+            initial_message=os.getenv(
+                "INITIAL_MESSAGE",
+                "What is your outlook on AI investment over the next 12 months?",
+            ),
+            max_tokens=_get_int("MAX_TOKENS", 1000),
+            temperature_a=_get_float("TEMPERATURE_A", 1.0),
+            temperature_b=_get_float("TEMPERATURE_B", 1.0),
+            context_window=_get_int("CONTEXT_WINDOW", 5),
+            supabase_url=os.getenv("SUPABASE_URL", ""),
+            supabase_key=os.getenv("SUPABASE_KEY", ""),
+        )
