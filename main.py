@@ -4,7 +4,9 @@ import logging
 
 from parrotlm._logging import log_structured, setup_logging
 from parrotlm.orchestrator import AgentConfig, Orchestrator
+from parrotlm.prompt_utils import construct_system_prompt
 from parrotlm.simulation_config import SimulationConfig
+from parrotlm.supabase_client import get_supabase_client
 from parrotlm.supabase_logger import upload_session_logs
 
 
@@ -13,10 +15,11 @@ def main() -> None:
         setup_logging()
 
         config = SimulationConfig.from_env()
+        get_supabase_client(url=config.supabase_url, key=config.supabase_anon_key)
 
         agent_a_config = AgentConfig(
             model=config.model_a,
-            system_prompt=config.persona_a,
+            system_prompt=construct_system_prompt(config.persona_a),
             user_persona_snapshot=config.persona_a,
             max_history_turns=config.context_window,
             params={
@@ -26,7 +29,7 @@ def main() -> None:
         )
         agent_b_config = AgentConfig(
             model=config.model_b,
-            system_prompt=config.persona_b,
+            system_prompt=construct_system_prompt(config.persona_b),
             user_persona_snapshot=config.persona_b,
             max_history_turns=config.context_window,
             params={
@@ -39,6 +42,7 @@ def main() -> None:
             agent_a_config=agent_a_config,
             agent_b_config=agent_b_config,
             scenario_name="simulation",
+            openrouter_api_key=config.openrouter_api_key,
         )
 
         logs = list(

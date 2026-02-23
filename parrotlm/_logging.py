@@ -13,48 +13,26 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_event_and_context(record: logging.LogRecord) -> tuple[str, dict[str, Any]]:
-    """Extract event/context from a log record while preserving extra fields."""
+    """Extract event/context from a log record."""
     message = record.getMessage()
     event = message
     context: dict[str, Any] = {}
 
     if " | " in message:
-        candidate_event, candidate_context = message.split(" | ", 1)
-        event = candidate_event
+        parts = message.split(" | ", 1)
+        event = parts[0]
         try:
-            parsed = json.loads(candidate_context)
-            if isinstance(parsed, dict):
-                context = parsed
-            else:
-                context = {"context": parsed}
+            context = json.loads(parts[1]) if len(parts) > 1 else {}
         except (TypeError, ValueError):
-            context = {"context": candidate_context}
+            context = {"message": parts[1]} if len(parts) > 1 else {}
 
-    standard_fields = {
-        "name",
-        "msg",
-        "args",
-        "levelname",
-        "levelno",
-        "pathname",
-        "filename",
-        "module",
-        "exc_info",
-        "exc_text",
-        "stack_info",
-        "lineno",
-        "funcName",
-        "created",
-        "msecs",
-        "relativeCreated",
-        "thread",
-        "threadName",
-        "processName",
-        "process",
-        "message",
-    }
     for key, value in record.__dict__.items():
-        if key not in standard_fields:
+        if key not in {
+            "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+            "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+            "created", "msecs", "relativeCreated", "thread", "threadName",
+            "processName", "process", "message",
+        }:
             context[key] = value
 
     return event, context

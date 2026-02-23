@@ -6,28 +6,8 @@ import os
 from typing import Any, Dict
 
 from dotenv import load_dotenv
-import streamlit as st
 
 
-def get_openrouter_api_key() -> str:
-    """Resolve the OpenRouter API key from session state, environment, or .env file."""
-    try:
-        api_key = st.session_state.get("openrouter_api_key")
-    except Exception:
-        api_key = None
-    if api_key:
-        return api_key
-
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if api_key:
-        return api_key
-
-    # Load .env lazily so normal env-based deployments do not pay this cost on every import.
-    load_dotenv()
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise ValueError("OPENROUTER_API_KEY not found in environment variables or .env file.")
-    return api_key
 
 
 def validate_non_empty_string(value: Any, field_name: str) -> str:

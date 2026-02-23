@@ -38,8 +38,9 @@ class SimulationConfig:
     temperature_a: float
     temperature_b: float
     context_window: int
+    openrouter_api_key: str
     supabase_url: str
-    supabase_key: str
+    supabase_anon_key: str
 
     @classmethod
     def from_env(cls) -> "SimulationConfig":
@@ -57,6 +58,7 @@ class SimulationConfig:
             temperature_a=_get_float("TEMPERATURE_A", 1.0),
             temperature_b=_get_float("TEMPERATURE_B", 1.0),
             context_window=_get_int("CONTEXT_WINDOW", 5),
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
             supabase_url=os.getenv("SUPABASE_URL", ""),
-            supabase_key=os.getenv("SUPABASE_KEY", ""),
+            supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
         )

@@ -12,48 +12,39 @@ _client: Optional[object] = None
 _initialised = False
 
 
-def get_supabase_client():
+def get_supabase_client(url: Optional[str] = None, key: Optional[str] = None):
     """Return a shared Supabase client, or *None* when credentials are missing.
 
     The client is created lazily on first call and cached for the process
-    lifetime.  Import errors (missing ``supabase`` package) or absent
-    environment variables are handled gracefully — a warning is logged and
-    ``None`` is returned so the rest of the app keeps working.
+    lifetime. If *url* and *key* are provided, they override environment
+    variables (which is preferred for single-source-of-truth config).
     """
     global _client, _initialised  # noqa: PLW0603
 
-    if _initialised:
+    if _initialised and url is None and key is None:
         return _client
 
-    # Ensure .env is loaded (important for picking up changes without restart)
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
+    effective_url = url or os.getenv("SUPABASE_URL", "").strip()
+    effective_key = key or os.getenv("SUPABASE_ANON_KEY", "").strip()
 
-    url = os.getenv("SUPABASE_URL", "").strip()
-    key = os.getenv("SUPABASE_ANON_KEY", "").strip()
-
-    if not url or not key:
-        logger.warning(
-            "supabase_credentials_missing | "
-            "Set SUPABASE_URL and SUPABASE_ANON_KEY in your .env file to enable cloud logging."
-        )
+    if not effective_url or not effective_key:
+        if not _initialised:
+            logger.warning(
+                "supabase_credentials_missing | "
+                "Set SUPABASE_URL and SUPABASE_ANON_KEY in your .env file to enable cloud logging."
+            )
         return None
-
 
     try:
         from supabase import create_client  # type: ignore[import-untyped]
 
-        _client = create_client(url, key)
+        _client = create_client(effective_url, effective_key)
         _initialised = True
-        logger.info("supabase_client_created | url=%s", url)
+        logger.info("supabase_client_created | url=%s", effective_url)
     except Exception:
         logger.exception("supabase_client_creation_failed")
-        _client = None
-        # We do NOT set _initialised=True here so it can be retried
-        # (e.g. if the package was missing but is now installed).
+        if not _initialised:
+            _client = None
 
     return _client
 

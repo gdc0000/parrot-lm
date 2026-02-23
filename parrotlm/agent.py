@@ -10,7 +10,7 @@ from openai import OpenAI
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from parrotlm._logging import is_retryable_exception, log_structured
-from parrotlm._validators import get_openrouter_api_key, validate_non_empty_string
+from parrotlm._validators import validate_non_empty_string
 
 logger = logging.getLogger(__name__)
 
@@ -23,20 +23,20 @@ class Agent:
         model_slug: str,
         system_prompt: str,
         name: str,
+        api_key: str,
         max_history_turns: int = 20,
     ) -> None:
         self.model_slug = validate_non_empty_string(model_slug, "model_slug")
         self.system_prompt = validate_non_empty_string(system_prompt, "system_prompt")
         self.name = validate_non_empty_string(name, "name")
 
-        if not isinstance(max_history_turns, int) or max_history_turns <= 0:
-            raise ValueError("`max_history_turns` must be a positive integer.")
-        self.max_history_turns = max_history_turns
+        from parrotlm._validators import validate_positive_int
+        self.max_history_turns = validate_positive_int(max_history_turns, "max_history_turns", default=20)
 
         self.history: List[Dict[str, str]] = [{"role": "system", "content": self.system_prompt}]
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
-            api_key=get_openrouter_api_key(),
+            api_key=api_key,
         )
 
     def _build_request_messages(self) -> List[Dict[str, str]]:

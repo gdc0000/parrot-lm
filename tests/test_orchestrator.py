@@ -4,7 +4,8 @@ from unittest.mock import mock_open, patch
 
 import pytest
 
-from parrotlm.orchestrator import Agent, AgentConfig, Orchestrator
+from parrotlm.agent import Agent
+from parrotlm.orchestrator import AgentConfig, Orchestrator
 
 
 def _agent_config(
@@ -89,6 +90,7 @@ def test_agent_generate_response_returns_expected_fields(_mock_openai):
         model_slug="fake/model",
         system_prompt="You are concise.",
         name="Agent A",
+        api_key="test-api-key",
         max_history_turns=5,
     )
 
@@ -107,7 +109,7 @@ def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A", user_persona_snapshot="Persona A")
     agent_b_config = _agent_config("fake/model-b", "Persona B", user_persona_snapshot="Persona B")
 
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test", openrouter_api_key="test-key")
     logs = list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
     assert len(logs) == 2
@@ -117,28 +119,16 @@ def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
 @patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
-def test_save_logs_works_with_plain_filename(_mock_openai):
-    agent_a_config = _agent_config("fake/model-a", "Persona A", user_persona_snapshot="Persona A")
-    agent_b_config = _agent_config("fake/model-b", "Persona B", user_persona_snapshot="Persona B")
-
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
-    list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
-
-    mocked_file = mock_open()
-    with patch("builtins.open", mocked_file):
-        orchestrator.save_logs("logs.jsonl")
-
-    write_calls = mocked_file().write.call_count
-    assert write_calls == 2
-
-
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestrator_uses_distinct_history_windows_per_agent(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A", max_history_turns=3)
     agent_b_config = _agent_config("fake/model-b", "Persona B", max_history_turns=7)
 
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    orchestrator = Orchestrator(
+        agent_a_config,
+        agent_b_config,
+        scenario_name="test",
+        openrouter_api_key="test-key",
+    )
 
     assert orchestrator.agent_a.max_history_turns == 3
     assert orchestrator.agent_b.max_history_turns == 7
@@ -151,7 +141,7 @@ def test_orchestrator_rejects_non_dict_agent_params(_mock_openai):
     agent_b_config = _agent_config("fake/model-b", "Persona B")
 
     with pytest.raises(TypeError):
-        Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+        Orchestrator(agent_a_config, agent_b_config, scenario_name="test", openrouter_api_key="test-key")
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
@@ -161,6 +151,7 @@ def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
         model_slug="fake/model",
         system_prompt="You are concise.",
         name="Agent A",
+        api_key="test-key",
         max_history_turns=5,
     )
 
@@ -179,6 +170,7 @@ def test_agent_context_window_never_starts_with_assistant_after_trimming(_mock_o
         model_slug="fake/model",
         system_prompt="You are concise.",
         name="Agent A",
+        api_key="test-key",
         max_history_turns=1,
     )
 
@@ -198,7 +190,12 @@ def test_agent_context_window_never_starts_with_assistant_after_trimming(_mock_o
 def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A")
     agent_b_config = _agent_config("fake/model-b", "Persona B")
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    orchestrator = Orchestrator(
+        agent_a_config,
+        agent_b_config,
+        scenario_name="test",
+        openrouter_api_key="test-key",
+    )
 
     refusal_response = {
         "content": "",
@@ -222,7 +219,12 @@ def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
 def test_run_simulation_wraps_agent_failure(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A")
     agent_b_config = _agent_config("fake/model-b", "Persona B")
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    orchestrator = Orchestrator(
+        agent_a_config,
+        agent_b_config,
+        scenario_name="test",
+        openrouter_api_key="test-key",
+    )
 
     with patch.object(orchestrator.agent_a, "generate_response", side_effect=RuntimeError("api failure")):
         with pytest.raises(RuntimeError) as raised:
@@ -234,25 +236,15 @@ def test_run_simulation_wraps_agent_failure(_mock_openai):
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
 @patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
-def test_save_logs_creates_directory_when_path_includes_folder(_mock_openai):
-    agent_a_config = _agent_config("fake/model-a", "Persona A")
-    agent_b_config = _agent_config("fake/model-b", "Persona B")
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
-    list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
-
-    with patch("os.makedirs") as mock_makedirs:
-        with patch("builtins.open", mock_open()):
-            orchestrator.save_logs("nested/logs.jsonl")
-
-    mock_makedirs.assert_called_once_with("nested", exist_ok=True)
-
-
-@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_wraps_invalid_agent_payload(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A")
     agent_b_config = _agent_config("fake/model-b", "Persona B")
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test")
+    orchestrator = Orchestrator(
+        agent_a_config,
+        agent_b_config,
+        scenario_name="test",
+        openrouter_api_key="test-key",
+    )
 
     invalid_payload = {
         "content": "ok",

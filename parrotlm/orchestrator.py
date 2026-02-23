@@ -39,6 +39,7 @@ class Orchestrator:
         agent_a_config: AgentConfig,
         agent_b_config: AgentConfig,
         scenario_name: str,
+        openrouter_api_key: str,
         experiment_id: Optional[str] = None,
     ) -> None:
         self.experiment_id = experiment_id or str(uuid.uuid4())
@@ -59,12 +60,14 @@ class Orchestrator:
             model_slug=agent_a_config.model,
             system_prompt=agent_a_config.system_prompt,
             name="Agent A",
+            api_key=openrouter_api_key,
             max_history_turns=max_history_turns_a,
         )
         self.agent_b = Agent(
             model_slug=agent_b_config.model,
             system_prompt=agent_b_config.system_prompt,
             name="Agent B",
+            api_key=openrouter_api_key,
             max_history_turns=max_history_turns_b,
         )
 
@@ -211,24 +214,3 @@ class Orchestrator:
             "system_prompt_snapshot": system_prompt_snapshot,
         }
 
-    def save_logs(self, filepath: str) -> None:
-        """Persist simulation logs to a JSONL file."""
-        output_path = validate_non_empty_string(filepath, "filepath")
-        directory = os.path.dirname(output_path)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-
-        try:
-            with open(output_path, "a", encoding="utf-8") as file_handle:
-                for entry in self.logs:
-                    file_handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError:
-            logger.exception("Failed to save logs to %s", output_path)
-            raise
-
-        log_structured(
-            logging.INFO,
-            "logs_saved",
-            filepath=output_path,
-            entries_saved=len(self.logs),
-        )

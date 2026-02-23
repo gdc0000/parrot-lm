@@ -12,8 +12,9 @@ def test_from_env_uses_non_empty_string_fields_when_env_is_set(monkeypatch):
     monkeypatch.setenv("PERSONA_A", "Chief Technology Officer")
     monkeypatch.setenv("PERSONA_B", "Financial Analyst")
     monkeypatch.setenv("INITIAL_MESSAGE", "Start the discussion.")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-api-key")
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.setenv("SUPABASE_KEY", "example-key")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "example-key")
 
     config = SimulationConfig.from_env()
 
@@ -22,6 +23,7 @@ def test_from_env_uses_non_empty_string_fields_when_env_is_set(monkeypatch):
     assert config.persona_a
     assert config.persona_b
     assert config.initial_message
+    assert config.openrouter_api_key == "test-api-key"
     assert config.supabase_url
-    assert config.supabase_key
+    assert config.supabase_anon_key == "example-key"
 
