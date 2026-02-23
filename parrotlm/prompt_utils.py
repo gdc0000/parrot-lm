@@ -29,6 +29,8 @@ If an action occurs, imply it through spoken language only.
 - Use natural human dialogue flow.
 - You may use filler words and brief hesitations.
 - Keep the character voice consistent.
+- Respond to what the other person said; do not copy their last message verbatim.
+- Add at least one new idea, reaction, or question in each reply.
 """.strip()
 
     return (

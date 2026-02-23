@@ -246,7 +246,7 @@ def _render_chat_message(
 ) -> None:
     """Render one message bubble and its metadata row."""
     speaker_model = str(log_entry.get("speaker_model", "unknown"))
-    is_agent_a = speaker_model == model_a_slug
+    is_agent_a = _is_agent_a_log_entry(log_entry, model_a_slug)
     speaker_label = persona_a if is_agent_a else persona_b
     message_content = str(log_entry.get("content", ""))
 
@@ -277,3 +277,13 @@ def _render_chat_message(
             f"</span></div>",
             unsafe_allow_html=True,
         )
+
+
+def _is_agent_a_log_entry(log_entry: Dict[str, Any], model_a_slug: str) -> bool:
+    """Resolve the speaker identity even when both agents use the same model slug."""
+    speaker_slot = str(log_entry.get("speaker_slot", "")).strip().upper()
+    if speaker_slot == "A":
+        return True
+    if speaker_slot == "B":
+        return False
+    return str(log_entry.get("speaker_model", "unknown")) == model_a_slug

@@ -91,7 +91,7 @@ def test_persist_simulation_logs_converts_to_dataframe():
 
     with patch.object(chat_setup_tab, "st", fake_streamlit):
         with patch.object(chat_setup_tab, "append_and_persist_logs", side_effect=_capture_append):
-            with patch("parrotlm.supabase_logger.upload_session_logs", return_value=True):
+            with patch("parrotlm.supabase_logger.upload_session_logs", return_value=(True, "ok")):
                 chat_setup_tab._persist_simulation_logs(local_storage=object(), simulation_logs=simulation_logs)
 
     assert isinstance(captured["df"], pd.DataFrame)
@@ -119,3 +119,15 @@ def test_stream_simulation_messages_tolerates_malformed_log_entries():
             )
 
     assert total_tokens == 3
+
+
+def test_is_agent_a_log_entry_prefers_speaker_slot_when_models_match():
+    log_entry_b = {"speaker_slot": "B", "speaker_model": "same/model"}
+
+    assert chat_setup_tab._is_agent_a_log_entry(log_entry_b, model_a_slug="same/model") is False
+
+
+def test_is_agent_a_log_entry_falls_back_to_model_slug_for_legacy_logs():
+    legacy_log_entry_a = {"speaker_model": "model/a"}
+
+    assert chat_setup_tab._is_agent_a_log_entry(legacy_log_entry_a, model_a_slug="model/a") is True

@@ -159,6 +159,7 @@ class Orchestrator:
             responder=responder,
             response_data=normalized_response_data,
             system_prompt_snapshot=system_prompt_snapshot,
+            input_message=input_message,
         )
         self.logs.append(log_entry)
 
@@ -183,18 +184,23 @@ class Orchestrator:
         responder: Agent,
         response_data: Dict[str, Any],
         system_prompt_snapshot: str,
+        input_message: str,
     ) -> Dict[str, Any]:
         """Create a normalized log dictionary for one model output."""
+        speaker_slot = "A" if speaker is self.agent_a else "B"
         return {
             "experiment_id": self.experiment_id,
             "turn_id": turn_id,
             "scenario": self.scenario_name,
+            "speaker_slot": speaker_slot,
+            "speaker_name": speaker.name,
             "speaker_model": speaker.model_slug,
             "responder_model": responder.model_slug,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "latency_ms": response_data["latency_ms"],
             "input_tokens": response_data["input_tokens"],
             "output_tokens": response_data["output_tokens"],
+            "input_preview": input_message[:120],
             "content": response_data["content"],
             "finish_reason": response_data["finish_reason"],
             "is_refusal": response_data["is_refusal"],

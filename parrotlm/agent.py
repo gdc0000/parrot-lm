@@ -39,6 +39,32 @@ class Agent:
             api_key=get_openrouter_api_key(),
         )
 
+    def _build_request_messages(self) -> List[Dict[str, str]]:
+        """Build a bounded, role-aligned message list for the next API request."""
+        max_messages = self.max_history_turns * 2
+        relevant_history = self.history[1:]
+        if len(relevant_history) > max_messages:
+            relevant_history = relevant_history[-max_messages:]
+
+        # If slicing starts on an assistant message, drop it so the model sees a valid
+        # user-led exchange sequence (plus the current user message at the end).
+        if relevant_history and relevant_history[0].get("role") == "assistant":
+            relevant_history = relevant_history[1:]
+
+        return [{"role": "system", "content": self.system_prompt}] + relevant_history
+
+    def _prune_history(self) -> None:
+        """Keep local history bounded and role-aligned to match the configured window."""
+        max_messages = self.max_history_turns * 2
+        relevant_history = self.history[1:]
+        if len(relevant_history) <= max_messages:
+            return
+
+        relevant_history = relevant_history[-max_messages:]
+        if relevant_history and relevant_history[0].get("role") == "assistant":
+            relevant_history = relevant_history[1:]
+        self.history = [self.history[0]] + relevant_history
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -49,14 +75,16 @@ class Agent:
         """Generate one response from the model and return normalized metadata."""
         user_text = validate_non_empty_string(input_text, "input_text")
         self.history.append({"role": "user", "content": user_text})
-
-        # One turn contributes two messages (user + assistant), so keep a bounded sliding window.
-        max_messages = self.max_history_turns * 2
-        # System prompt is always reconstructed explicitly below to avoid duplicated system entries.
-        relevant_history = self.history[1:]
-        if len(relevant_history) > max_messages:
-            relevant_history = relevant_history[-max_messages:]
-        messages = [{"role": "system", "content": self.system_prompt}] + relevant_history
+        messages = self._build_request_messages()
+        log_structured(
+            logging.DEBUG,
+            "agent_request_context",
+            agent=self.name,
+            model=self.model_slug,
+            history_total_messages=len(self.history) - 1,
+            messages_sent=len(messages) - 1,
+            roles_sent=[message.get("role", "unknown") for message in messages[1:]],
+        )
 
         start_time = time.time()
         try:
@@ -84,6 +112,9 @@ class Agent:
 
         if content:
             self.history.append({"role": "assistant", "content": content})
+            self._prune_history()
+        else:
+            self._prune_history()
 
         return {
             "content": content,

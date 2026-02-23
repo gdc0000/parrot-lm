@@ -25,6 +25,29 @@ class _FakeOpenAIClient:
         self.chat = SimpleNamespace(completions=_FakeCompletions())
 
 
+class _RecordingCompletions:
+    def __init__(self):
+        self.calls = []
+
+    def create(self, model, messages, **kwargs):
+        self.calls.append({"model": model, "messages": messages, "kwargs": kwargs})
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="mocked reply"),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+        )
+
+
+class _RecordingOpenAIClient:
+    def __init__(self, *args, **kwargs):
+        self._completions = _RecordingCompletions()
+        self.chat = SimpleNamespace(completions=self._completions)
+
+
 class _EmptyContentCompletions:
     def create(self, model, messages, **kwargs):
         return SimpleNamespace(
@@ -162,6 +185,27 @@ def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
     assert response["is_refusal"] is True
     assert response["output_tokens"] == 0
     assert len(agent.history) == 2  # system + user; assistant is not appended on blank content.
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
+@patch("parrotlm.agent.OpenAI", side_effect=_RecordingOpenAIClient)
+def test_agent_context_window_never_starts_with_assistant_after_trimming(_mock_openai):
+    agent = Agent(
+        model_slug="fake/model",
+        system_prompt="You are concise.",
+        name="Agent A",
+        max_history_turns=1,
+    )
+
+    agent.generate_response("first")
+    agent.generate_response("second")
+
+    recording_client = agent.client
+    second_call_messages = recording_client.chat.completions.calls[1]["messages"]
+    sent_roles = [message["role"] for message in second_call_messages]
+
+    assert sent_roles[0] == "system"
+    assert sent_roles[1:] == ["user"]
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)

@@ -113,8 +113,9 @@ def _merge_logs(current_df: pd.DataFrame, new_logs_df: pd.DataFrame) -> pd.DataF
 
 def _persist_logs_to_local_storage(local_storage: Any, logs_df: pd.DataFrame) -> bool:
     """Write the current log dataframe to local storage."""
+    serializable_df = logs_df.astype(object).where(pd.notna(logs_df), None)
     try:
-        local_storage.setItem(LOCAL_STORAGE_LOG_KEY, logs_df.to_dict("records"))
+        local_storage.setItem(LOCAL_STORAGE_LOG_KEY, serializable_df.to_dict("records"))
     except (AttributeError, TypeError, ValueError):
         logger.exception(
             "local_storage_write_failed | key=%s row_count=%s",

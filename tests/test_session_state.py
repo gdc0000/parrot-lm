@@ -139,3 +139,17 @@ def test_append_and_persist_logs_keeps_session_data_when_storage_write_fails():
 
     assert len(fake_st.session_state["all_logs"]) == 1
     assert fake_st.session_state["all_logs"].iloc[0]["content"] == "persist-me"
+
+
+def test_append_and_persist_logs_serializes_nan_as_none_for_local_storage():
+    fake_st = SimpleNamespace(session_state={"all_logs": pd.DataFrame([{"content": "old"}])})
+    storage = _FakeLocalStorage()
+    new_logs_df = pd.DataFrame([{"content": "new", "speaker_slot": "A"}])
+
+    with patch.object(session_state, "st", fake_st):
+        session_state.append_and_persist_logs(storage, new_logs_df)
+
+    saved_rows = storage.store[session_state.LOCAL_STORAGE_LOG_KEY]
+    assert saved_rows[0]["content"] == "old"
+    assert saved_rows[0]["speaker_slot"] is None
+    assert saved_rows[1]["speaker_slot"] == "A"
