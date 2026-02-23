@@ -12,24 +12,23 @@ logger = logging.getLogger(__name__)
 TABLE_NAME = "session_logs"
 
 
-def upload_session_logs(logs: List[Dict[str, Any]]) -> bool:
+def upload_session_logs(logs: List[Dict[str, Any]]) -> tuple[bool, str]:
     """Insert *logs* into the Supabase ``session_logs`` table.
 
-    Returns ``True`` on success and ``False`` on any failure (missing client,
-    network error, API error).  Failures are logged but never raised so the
-    caller's workflow is not interrupted.
+    Returns ``(True, "")`` on success and ``(False, error_msg)`` on failure.
     """
+
     if not logs:
         logger.info("upload_skipped | reason=empty_logs")
-        return True
+        return True, "No logs to upload."
+
 
     client = get_supabase_client()
     if client is None:
-        logger.warning(
-            "upload_skipped | reason=supabase_client_unavailable "
-            "| hint=check SUPABASE_URL and SUPABASE_ANON_KEY in .env"
-        )
-        return False
+        msg = "Supabase client unavailable (check .env)."
+        logger.warning(f"upload_skipped | reason=supabase_client_unavailable | hint={msg}")
+        return False, msg
+
 
     # Strip keys that Supabase would reject (e.g. the auto-generated `id`).
     cleaned = [_clean_log_entry(entry) for entry in logs]
@@ -42,14 +41,18 @@ def upload_session_logs(logs: List[Dict[str, Any]]) -> bool:
             TABLE_NAME,
             inserted_count,
         )
-        return True
-    except Exception:
+        return True, f"Successfully inserted {inserted_count} rows."
+
+    except Exception as e:
+        error_msg = str(e)
         logger.exception(
-            "upload_failed | table=%s rows_attempted=%s",
+            "upload_failed | table=%s rows_attempted=%s | error=%s",
             TABLE_NAME,
             len(cleaned),
+            error_msg,
         )
-        return False
+        return False, error_msg
+
 
 
 _ALLOWED_COLUMNS = frozenset(

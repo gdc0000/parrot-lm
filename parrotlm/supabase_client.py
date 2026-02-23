@@ -25,9 +25,7 @@ def get_supabase_client():
     if _initialised:
         return _client
 
-    _initialised = True
-
-    # Ensure .env is loaded
+    # Ensure .env is loaded (important for picking up changes without restart)
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -44,14 +42,18 @@ def get_supabase_client():
         )
         return None
 
+
     try:
         from supabase import create_client  # type: ignore[import-untyped]
 
         _client = create_client(url, key)
+        _initialised = True
         logger.info("supabase_client_created | url=%s", url)
     except Exception:
         logger.exception("supabase_client_creation_failed")
         _client = None
+        # We do NOT set _initialised=True here so it can be retried
+        # (e.g. if the package was missing but is now installed).
 
     return _client
 

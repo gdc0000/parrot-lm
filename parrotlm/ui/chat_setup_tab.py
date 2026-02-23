@@ -224,12 +224,17 @@ def _persist_simulation_logs(local_storage: Any, simulation_logs: List[Dict[str,
     from parrotlm.supabase_client import get_supabase_client
     from parrotlm.supabase_logger import upload_session_logs
 
-    if not get_supabase_client():
+    client = get_supabase_client()
+    if not client:
         st.warning("⚠️ Cloud export skipped — check SUPABASE_URL and SUPABASE_ANON_KEY in .env.")
-    elif upload_session_logs(simulation_logs):
-        st.success("✅ Session logs exported to Supabase.")
     else:
-        st.error("❌ Cloud export failed — ensure the 'session_logs' table exists in Supabase.")
+        success, message = upload_session_logs(simulation_logs)
+        if success:
+            st.success(f"✅ {message}")
+        else:
+            st.error(f"❌ Cloud export failed: {message}")
+
+
 
 
 def _render_chat_message(
