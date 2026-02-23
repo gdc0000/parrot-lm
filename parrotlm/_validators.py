@@ -6,10 +6,18 @@ import os
 from typing import Any, Dict
 
 from dotenv import load_dotenv
+import streamlit as st
 
 
 def get_openrouter_api_key() -> str:
-    """Resolve the OpenRouter API key from environment or .env file."""
+    """Resolve the OpenRouter API key from session state, environment, or .env file."""
+    try:
+        api_key = st.session_state.get("openrouter_api_key")
+    except Exception:
+        api_key = None
+    if api_key:
+        return api_key
+
     api_key = os.getenv("OPENROUTER_API_KEY")
     if api_key:
         return api_key

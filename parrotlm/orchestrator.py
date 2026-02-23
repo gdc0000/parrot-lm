@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
@@ -18,10 +19,16 @@ from parrotlm._validators import (
 )
 from parrotlm.agent import Agent
 
-# Re-export Agent so that `from parrotlm.orchestrator import Agent` still works.
-__all__ = ["Agent", "Orchestrator"]
-
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    model: str
+    system_prompt: str
+    user_persona_snapshot: str
+    max_history_turns: int
+    params: dict
 
 
 class Orchestrator:
@@ -29,49 +36,46 @@ class Orchestrator:
 
     def __init__(
         self,
-        agent_a_config: Dict[str, Any],
-        agent_b_config: Dict[str, Any],
+        agent_a_config: AgentConfig,
+        agent_b_config: AgentConfig,
         scenario_name: str,
         experiment_id: Optional[str] = None,
     ) -> None:
         self.experiment_id = experiment_id or str(uuid.uuid4())
         self.scenario_name = validate_non_empty_string(scenario_name, "scenario_name")
 
-        if not isinstance(agent_a_config, dict) or not isinstance(agent_b_config, dict):
-            raise TypeError("`agent_a_config` and `agent_b_config` must be dictionaries.")
-
         max_history_turns_a = validate_positive_int(
-            agent_a_config.get("max_history_turns"),
+            agent_a_config.max_history_turns,
             "agent_a_config['max_history_turns']",
             default=20,
         )
         max_history_turns_b = validate_positive_int(
-            agent_b_config.get("max_history_turns"),
+            agent_b_config.max_history_turns,
             "agent_b_config['max_history_turns']",
             default=20,
         )
 
         self.agent_a = Agent(
-            model_slug=agent_a_config["model"],
-            system_prompt=agent_a_config["system_prompt"],
+            model_slug=agent_a_config.model,
+            system_prompt=agent_a_config.system_prompt,
             name="Agent A",
             max_history_turns=max_history_turns_a,
         )
         self.agent_b = Agent(
-            model_slug=agent_b_config["model"],
-            system_prompt=agent_b_config["system_prompt"],
+            model_slug=agent_b_config.model,
+            system_prompt=agent_b_config.system_prompt,
             name="Agent B",
             max_history_turns=max_history_turns_b,
         )
 
-        self.persona_a_snapshot = agent_a_config.get("user_persona_snapshot", self.agent_a.system_prompt)
-        self.persona_b_snapshot = agent_b_config.get("user_persona_snapshot", self.agent_b.system_prompt)
+        self.persona_a_snapshot = agent_a_config.user_persona_snapshot or self.agent_a.system_prompt
+        self.persona_b_snapshot = agent_b_config.user_persona_snapshot or self.agent_b.system_prompt
         self.agent_a_params = validate_generation_params(
-            agent_a_config.get("params"),
+            agent_a_config.params,
             "agent_a_config['params']",
         )
         self.agent_b_params = validate_generation_params(
-            agent_b_config.get("params"),
+            agent_b_config.params,
             "agent_b_config['params']",
         )
         self.logs: List[Dict[str, Any]] = []

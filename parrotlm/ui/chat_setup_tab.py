@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import pandas as pd
 import streamlit as st
 
-from parrotlm.orchestrator import Orchestrator
+from parrotlm.orchestrator import AgentConfig, Orchestrator
 from parrotlm.prompt_utils import construct_system_prompt
 
 from .session_state import append_and_persist_logs
@@ -42,15 +42,15 @@ def _build_chatbot_config(
     context_window: int,
     temperature: float,
     max_tokens: int,
-) -> Dict[str, Any]:
+) -> AgentConfig:
     """Build orchestrator agent configuration from UI input fields."""
-    return {
-        "model": model_slug,
-        "system_prompt": system_prompt,
-        "user_persona_snapshot": persona,
-        "max_history_turns": context_window,
-        "params": {"temperature": temperature, "max_tokens": max_tokens},
-    }
+    return AgentConfig(
+        model=model_slug,
+        system_prompt=system_prompt,
+        user_persona_snapshot=persona,
+        max_history_turns=context_window,
+        params={"temperature": temperature, "max_tokens": max_tokens},
+    )
 
 
 def _build_scenario_name(persona_a: str, persona_b: str) -> str:

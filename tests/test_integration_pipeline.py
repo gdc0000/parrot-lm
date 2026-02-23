@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from parrotlm import analysis_utils
-from parrotlm.orchestrator import Orchestrator
+from parrotlm.orchestrator import AgentConfig, Orchestrator
 from parrotlm.ui import session_state
 
 
@@ -42,8 +42,20 @@ class _FakeLocalStorage:
 @patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestration_to_persistence_to_analysis_pipeline(_mock_openai):
     orchestrator = Orchestrator(
-        agent_a_config={"model": "fake/model-a", "system_prompt": "Persona A"},
-        agent_b_config={"model": "fake/model-b", "system_prompt": "Persona B"},
+        agent_a_config=AgentConfig(
+            model="fake/model-a",
+            system_prompt="Persona A",
+            user_persona_snapshot="Persona A",
+            max_history_turns=20,
+            params={},
+        ),
+        agent_b_config=AgentConfig(
+            model="fake/model-b",
+            system_prompt="Persona B",
+            user_persona_snapshot="Persona B",
+            max_history_turns=20,
+            params={},
+        ),
         scenario_name="pipeline-test",
     )
 

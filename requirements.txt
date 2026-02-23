@@ -5,9 +5,6 @@ streamlit>=1.40
 streamlit-local-storage
 plotly>=5.18.0
 nltk
-altair>=4.0.0,<5.0.0
-vega-datasets
-jinja2
 numpy>=1.21.0
 openai
 supabase>=2.0.0

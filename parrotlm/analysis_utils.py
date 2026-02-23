@@ -135,11 +135,8 @@ def process_logs(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "content" not in df.columns:
         return df.copy()
 
-    metrics_by_row = []
-    for content in df["content"]:
-        metrics_by_row.append(_safe_analyze_text(content))
-
-    metrics_df = pd.DataFrame(metrics_by_row, index=df.index)
+    result = df["content"].apply(_safe_analyze_text)
+    metrics_df = pd.DataFrame(result.tolist(), index=df.index)
     return pd.concat([df.copy(), metrics_df], axis=1)
 
 
@@ -177,9 +174,6 @@ def process_custom_lexicon(df: pd.DataFrame, category_dict: Dict[str, list[str]]
     if df.empty or "content" not in df.columns or not category_dict:
         return df.copy()
 
-    lexicon_counts_by_row = []
-    for content in df["content"]:
-        lexicon_counts_by_row.append(count_custom_words(content, category_dict))
-
-    lexicon_df = pd.DataFrame(lexicon_counts_by_row, index=df.index)
+    result = df["content"].apply(lambda x: count_custom_words(x, category_dict))
+    lexicon_df = pd.DataFrame(result.tolist(), index=df.index)
     return pd.concat([df.copy(), lexicon_df], axis=1)
