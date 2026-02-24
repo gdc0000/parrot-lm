@@ -1,1 +1,0 @@
-{"agents": {"agent_a": {"model": "model-a", "persona": "persona-a", "temperature": 0.5}, "agent_b": {"model": "model-b", "persona": "persona-b", "temperature": 0.8}}, "simulation": {"num_turns": 5, "initial_message": "test message", "max_tokens": 100, "context_window": 2}}
