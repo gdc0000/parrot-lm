@@ -5,60 +5,12 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict
+
+import yaml
 
 logger = logging.getLogger(__name__)
-
-
-def _get_int(name: str, default: int) -> int:
-    """Safely fetch and parse an integer from environment variables.
-
-    Args:
-        name: The name of the environment variable to fetch.
-        default: The fallback value if the variable is missing or invalid.
-
-    Returns:
-        The parsed integer or the default value.
-    """
-    raw_environment_value = os.getenv(name)
-    if raw_environment_value is None or not raw_environment_value.strip():
-        return default
-    try:
-        return int(raw_environment_value)
-    except ValueError:
-        logger.warning(
-            "Failed to parse environment variable '%s' as an integer. Received: '%s'. "
-            "Falling back to default: %s.",
-            name,
-            raw_environment_value,
-            default,
-        )
-        return default
-
-
-def _get_float(name: str, default: float) -> float:
-    """Safely fetch and parse a float from environment variables.
-
-    Args:
-        name: The name of the environment variable to fetch.
-        default: The fallback value if the variable is missing or invalid.
-
-    Returns:
-        The parsed float or the default value.
-    """
-    raw_environment_value = os.getenv(name)
-    if raw_environment_value is None or not raw_environment_value.strip():
-        return default
-    try:
-        return float(raw_environment_value)
-    except ValueError:
-        logger.warning(
-            "Failed to parse environment variable '%s' as a float. Received: '%s'. "
-            "Falling back to default: %s.",
-            name,
-            raw_environment_value,
-            default,
-        )
-        return default
 
 
 def load_environment_variables() -> None:
@@ -79,41 +31,35 @@ def load_environment_variables() -> None:
         )
 
 
-def instantiate_configuration(
-    class_reference: type[SimulationConfig],
-) -> SimulationConfig:
-    """Instantiate the SimulationConfig object using current environment variables.
+def load_yaml_config(file_path: str) -> Dict[str, Any]:
+    """Load user-defined configuration from a YAML file.
 
     Args:
-        class_reference: The class to instantiate (typically SimulationConfig).
+        file_path: Path to the YAML configuration file.
 
     Returns:
-        A fully populated SimulationConfig instance.
+        A dictionary containing the configuration data, or an empty dict if not found.
     """
-    return class_reference(
-        model_a=os.getenv("MODEL_A", "openai/gpt-4o-mini"),
-        model_b=os.getenv("MODEL_B", "openai/gpt-4o-mini"),
-        persona_a=os.getenv("PERSONA_A", "Chief Technology Officer"),
-        persona_b=os.getenv("PERSONA_B", "Financial Analyst"),
-        num_turns=_get_int("NUM_TURNS", 10),
-        initial_message=os.getenv(
-            "INITIAL_MESSAGE",
-            "What is your outlook on AI investment over the next 12 months?",
-        ),
-        max_tokens=_get_int("MAX_TOKENS", 1000),
-        temperature_a=_get_float("TEMPERATURE_A", 1.0),
-        temperature_b=_get_float("TEMPERATURE_B", 1.0),
-        context_window=_get_int("CONTEXT_WINDOW", 5),
-        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
-        supabase_url=os.getenv("SUPABASE_URL", ""),
-        supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
-    )
+    path = Path(file_path)
+    if not path.exists():
+        logger.warning(
+            f"Configuration file '{file_path}' not found. Using internal defaults."
+        )
+        return {}
+
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return yaml.safe_load(file) or {}
+    except (yaml.YAMLError, OSError) as exception:
+        logger.error(f"Failed to load configuration from '{file_path}': {exception}")
+        return {}
 
 
 @dataclass(frozen=True)
 class SimulationConfig:
     """Holds configuration parameters for a complete simulation run."""
 
+    # User defined parameters (loaded from YAML)
     model_a: str
     model_b: str
     persona_a: str
@@ -124,16 +70,43 @@ class SimulationConfig:
     temperature_a: float
     temperature_b: float
     context_window: int
+
+    # Secrets (loaded from environment)
     openrouter_api_key: str
     supabase_url: str
     supabase_anon_key: str
 
     @classmethod
-    def from_env(cls) -> "SimulationConfig":
-        """Load the simulation configuration from environment variables.
+    def load(cls, yaml_path: str = "config/simulation.yaml") -> "SimulationConfig":
+        """Load the simulation configuration from YAML and environment variables.
+
+        Args:
+            yaml_path: The path to the user-defined YAML configuration file.
 
         Returns:
             A populated SimulationConfig instance.
         """
         load_environment_variables()
-        return instantiate_configuration(cls)
+        config_data = load_yaml_config(yaml_path)
+
+        # Extraction from YAML with defaults
+        agents = config_data.get("agents", {})
+        agent_a = agents.get("agent_a", {})
+        agent_b = agents.get("agent_b", {})
+        sim = config_data.get("simulation", {})
+
+        return cls(
+            model_a=agent_a.get("model", "openai/gpt-4o-mini"),
+            model_b=agent_b.get("model", "openai/gpt-4o-mini"),
+            persona_a=agent_a.get("persona", "Chief Technology Officer"),
+            persona_b=agent_b.get("persona", "Financial Analyst"),
+            temperature_a=float(agent_a.get("temperature", 1.0)),
+            temperature_b=float(agent_b.get("temperature", 1.0)),
+            num_turns=int(sim.get("num_turns", 10)),
+            initial_message=sim.get("initial_message", "Hello."),
+            max_tokens=int(sim.get("max_tokens", 1000)),
+            context_window=int(sim.get("context_window", 5)),
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+            supabase_url=os.getenv("SUPABASE_URL", ""),
+            supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
+        )

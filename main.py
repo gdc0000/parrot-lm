@@ -18,7 +18,7 @@ def initialize_infrastructure() -> SimulationConfig:
         The fully loaded SimulationConfig object.
     """
     setup_logging()
-    configuration = SimulationConfig.from_env()
+    configuration = SimulationConfig.load()
     get_supabase_client(
         url=configuration.supabase_url, key=configuration.supabase_anon_key
     )

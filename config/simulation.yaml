@@ -1,0 +1,17 @@
+# User-defined simulation parameters
+
+agents:
+  agent_a:
+    model: "openai/gpt-4o-mini"
+    persona: "Chief Technology Officer"
+    temperature: 1.0
+  agent_b:
+    model: "openai/gpt-4o-mini"
+    persona: "Financial Analyst"
+    temperature: 1.0
+
+simulation:
+  num_turns: 10
+  initial_message: "What is your outlook on AI investment over the next 12 months?"
+  max_tokens: 1000
+  context_window: 5

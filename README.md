@@ -18,7 +18,7 @@ The codebase is built on **team-friendly principles**: simple over clever, reada
 - `parrotlm/agent.py`: Single LLM agent managing model configuration, history windows, retries, and API calls.
 - `parrotlm/orchestrator.py`: Manages the simulation run, orchestrating the back-and-forth between two agents and generating structured logs.
 - `parrotlm/prompt_utils.py`: Constructs system prompts with strict constraints (dialogue only, zero narration).
-- `parrotlm/simulation_config.py`: Environment-based configuration loader.
+- `parrotlm/simulation_config.py`: Configuration loader (YAML for user parameters, environment for secrets).
 - `parrotlm/supabase_client.py` & `parrotlm/supabase_logger.py`: Supabase client singleton and batch log insertion logic.
 - `parrotlm/_logging.py` & `parrotlm/_validators.py`: Core utilities for structured logging and payload validation.
 
@@ -44,26 +44,35 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Configure your environment variables. Copy `.env.example` to `.env` and fill in your credentials and simulation parameters:
+3. Configure your environment variables. Copy `.env.example` to `.env` and fill in your secrets:
 
 ```env
 OPENROUTER_API_KEY=your_openrouter_key
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
-
-MODEL_A=openai/gpt-4o-mini
-MODEL_B=openai/gpt-4o-mini
-PERSONA_A="Chief Technology Officer"
-PERSONA_B="Financial Analyst"
-NUM_TURNS=10
-INITIAL_MESSAGE="What is your outlook on AI investment over the next 12 months?"
-MAX_TOKENS=1000
-TEMPERATURE_A=1.0
-TEMPERATURE_B=1.0
-CONTEXT_WINDOW=5
 ```
 
-4. Run the simulation:
+4. Configure your simulation parameters in `config/simulation.yaml`:
+
+```yaml
+agents:
+  agent_a:
+    model: "openai/gpt-4o-mini"
+    persona: "Chief Technology Officer"
+    temperature: 1.0
+  agent_b:
+    model: "openai/gpt-4o-mini"
+    persona: "Financial Analyst"
+    temperature: 1.0
+
+simulation:
+  num_turns: 10
+  initial_message: "What is your outlook on AI investment over the next 12 months?"
+  max_tokens: 1000
+  context_window: 5
+```
+
+5. Run the simulation:
 
 ```bash
 python main.py
