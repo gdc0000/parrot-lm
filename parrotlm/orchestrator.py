@@ -63,8 +63,6 @@ class Orchestrator:
             agent_a_configuration, agent_b_configuration
         )
 
-        self.logs: List[Dict[str, Any]] = []
-
     def initialize_agent_instances(
         self,
         agent_a_configuration: AgentConfig,
@@ -128,13 +126,13 @@ class Orchestrator:
             turns_requested=num_turns,
         )
 
-    def log_simulation_completion(self) -> None:
+    def log_simulation_completion(self, total_logs: int) -> None:
         """Record the successful completion of the simulation."""
         log_structured(
             logging.INFO,
             "simulation_completed",
             experiment_id=self.experiment_id,
-            generated_log_entries=len(self.logs),
+            generated_log_entries=total_logs,
         )
 
     def run_simulation(
@@ -159,8 +157,13 @@ class Orchestrator:
         last_message = validate_non_empty_string(initial_message, "initial_message")
 
         self.log_simulation_start(num_turns)
-        yield from self.process_conversation_turns(num_turns, last_message)
-        self.log_simulation_completion()
+
+        total_logs = 0
+        for log_entry in self.process_conversation_turns(num_turns, last_message):
+            yield log_entry
+            total_logs += 1
+
+        self.log_simulation_completion(total_logs)
 
     def process_conversation_turns(
         self, num_turns: int, initial_message: str
@@ -265,9 +268,9 @@ class Orchestrator:
             system_prompt_snapshot=system_prompt_snapshot,
             input_message=input_message,
         )
-        self.logs.append(log_entry)
 
         # We must keep a non-empty handoff message so the next agent receives valid input.
+
         # Sending a completely blank message to the next agent breaks the strict role alternation
         # sequence that OpenRouter expects, causing subsequent API requests to fail.
         next_message = normalized_response_data["content"] or "..."

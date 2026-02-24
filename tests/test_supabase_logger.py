@@ -89,3 +89,50 @@ class TestUploadSessionLogs:
         assert "unknown_key" not in cleaned[0]
         assert cleaned[0]["experiment_id"] == "e1"
         assert cleaned[0]["turn_id"] == 0
+
+
+class TestSupabaseBufferedLogger:
+    """Unit tests for SupabaseBufferedLogger."""
+
+    def setup_method(self):
+        reset_client()
+
+    @patch("parrotlm.supabase_logger.get_supabase_client")
+    def test_buffer_uploads_on_batch_size(self, mock_get_client):
+        mock_table = MagicMock()
+        mock_table.insert.return_value.execute.return_value = SimpleNamespace(
+            data=[{"id": 1}, {"id": 2}]
+        )
+        mock_client = MagicMock()
+        mock_client.table.return_value = mock_table
+        mock_get_client.return_value = mock_client
+
+        logger = supabase_logger.SupabaseBufferedLogger(batch_size=2)
+
+        # First push - should not upload
+        logger.push({"turn_id": 0, "content": "first"})
+        mock_table.insert.assert_not_called()
+
+        # Second push - should upload
+        logger.push({"turn_id": 1, "content": "second"})
+        mock_table.insert.assert_called_once()
+        assert len(logger.buffer) == 0
+
+    @patch("parrotlm.supabase_logger.get_supabase_client")
+    def test_flush_uploads_remaining_logs(self, mock_get_client):
+        mock_table = MagicMock()
+        mock_table.insert.return_value.execute.return_value = SimpleNamespace(
+            data=[{"id": 1}]
+        )
+        mock_client = MagicMock()
+        mock_client.table.return_value = mock_table
+        mock_get_client.return_value = mock_client
+
+        logger = supabase_logger.SupabaseBufferedLogger(batch_size=10)
+        logger.push({"turn_id": 0, "content": "first"})
+
+        mock_table.insert.assert_not_called()
+
+        logger.flush()
+        mock_table.insert.assert_called_once()
+        assert len(logger.buffer) == 0

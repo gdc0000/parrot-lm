@@ -65,7 +65,9 @@ class SimulationConfig:
     persona_b: str
     num_turns: int
     initial_message: str
+    batch_size: int
     max_tokens: int
+
     temperature_a: float
     temperature_b: float
     context_window: int
@@ -103,6 +105,7 @@ class SimulationConfig:
             temperature_b=float(agent_b.get("temperature", 1.0)),
             num_turns=int(sim.get("num_turns", 10)),
             initial_message=sim.get("initial_message", "Hello."),
+            batch_size=int(os.getenv("BATCH_SIZE", "10")),
             max_tokens=int(sim.get("max_tokens", 1000)),
             context_window=int(sim.get("context_window", 5)),
             openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),

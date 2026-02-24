@@ -8,7 +8,7 @@ from parrotlm.orchestrator import AgentConfig, Orchestrator
 from parrotlm.prompt_utils import construct_system_prompt
 from parrotlm.simulation_config import SimulationConfig
 from parrotlm.supabase_client import get_supabase_client
-from parrotlm.supabase_logger import upload_session_logs
+from parrotlm.supabase_logger import SupabaseBufferedLogger
 
 
 def initialize_infrastructure() -> SimulationConfig:
@@ -63,16 +63,13 @@ def execute_simulation(
     agent_a_configuration: AgentConfig,
     agent_b_configuration: AgentConfig,
     configuration: SimulationConfig,
-) -> List[Dict[str, Any]]:
-    """Run the complete agent interaction scenario and collect the logs.
+) -> None:
+    """Run the complete agent interaction scenario and stream logs to Supabase.
 
     Args:
         agent_a_configuration: Setup for the first agent.
         agent_b_configuration: Setup for the second agent.
         configuration: Global settings containing API keys and turn limits.
-
-    Returns:
-        A list of generated log entries from the simulation.
     """
     orchestrator = Orchestrator(
         agent_a_configuration=agent_a_configuration,
@@ -81,25 +78,23 @@ def execute_simulation(
         openrouter_api_key=configuration.openrouter_api_key,
     )
 
-    # We wrap the generator in list() to force the entire simulation to evaluate
-    # synchronously. We must collect all log entries before attempting the batch
-    # upload to Supabase in the next step.
-    return list(
-        orchestrator.run_simulation(
+    buffered_logger = SupabaseBufferedLogger(batch_size=configuration.batch_size)
+
+    try:
+        # We iterate over the generator to process logs one by one as they are produced.
+        # This prevents memory exhaustion during long simulations.
+        for log_entry in orchestrator.run_simulation(
             num_turns=configuration.num_turns,
             initial_message=configuration.initial_message,
-        )
-    )
+        ):
+            buffered_logger.push(log_entry)
+            log_structured(
+                logging.INFO, "log_entry_generated", turn_id=log_entry["turn_id"]
+            )
 
-
-def process_simulation_results(logs: List[Dict[str, Any]]) -> None:
-    """Handle post-simulation tasks like uploading logs and emitting final metrics.
-
-    Args:
-        logs: The collection of interaction records from the simulation.
-    """
-    upload_session_logs(logs)
-    log_structured(logging.INFO, "simulation_complete", num_logs=len(logs))
+    finally:
+        # Ensure any remaining logs in the buffer are uploaded even if the simulation stops early.
+        buffered_logger.flush()
 
 
 def main() -> None:
@@ -120,10 +115,7 @@ def main() -> None:
         agent_a, agent_b = configure_simulation_agents(configuration)
 
         current_phase = "simulation_execution"
-        logs = execute_simulation(agent_a, agent_b, configuration)
-
-        current_phase = "result_processing"
-        process_simulation_results(logs)
+        execute_simulation(agent_a, agent_b, configuration)
 
     except Exception as exception:
         log_structured(

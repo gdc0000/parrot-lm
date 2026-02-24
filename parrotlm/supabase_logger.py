@@ -121,3 +121,46 @@ def upload_session_logs(logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
 
     cleaned_log_entries = sanitize_log_entries(logs)
     return execute_batch_insert(client, cleaned_log_entries)
+
+
+class SupabaseBufferedLogger:
+    """A memory-efficient logger that uploads logs in batches.
+
+    This class provides a simple way to stream logs to Supabase without
+    keeping all of them in memory. It's designed for long-running
+    simulations where memory safety is a priority.
+    """
+
+    def __init__(self, batch_size: int = 10) -> None:
+        """Initialize the buffered logger.
+
+        Args:
+            batch_size: Number of logs to accumulate before uploading.
+        """
+        self.batch_size = max(1, batch_size)
+        self.buffer: List[Dict[str, Any]] = []
+        self.is_available, self.client, self.error_message = (
+            verify_client_availability()
+        )
+
+    def push(self, log_entry: Dict[str, Any]) -> None:
+        """Add a log entry to the buffer and upload if the batch size is reached.
+
+        Args:
+            log_entry: The structured log dictionary to record.
+        """
+        if not self.is_available:
+            return
+
+        self.buffer.append(log_entry)
+        if len(self.buffer) >= self.batch_size:
+            self.flush()
+
+    def flush(self) -> None:
+        """Upload all currently buffered logs to Supabase."""
+        if not self.buffer or not self.is_available:
+            return
+
+        cleaned_entries = sanitize_log_entries(self.buffer)
+        execute_batch_insert(self.client, cleaned_entries)
+        self.buffer = []

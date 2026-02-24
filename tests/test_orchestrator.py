@@ -124,6 +124,7 @@ def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
 
     assert len(logs) == 2
     assert "content" in logs[0]
+
     assert "system_prompt_snapshot" in logs[0]
 
 
