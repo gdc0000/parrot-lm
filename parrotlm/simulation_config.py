@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
-
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +30,11 @@ def load_environment_variables() -> None:
         )
 
 
-def load_yaml_config(file_path: str) -> Dict[str, Any]:
-    """Load user-defined configuration from a YAML file.
+def load_json_config(file_path: str) -> Dict[str, Any]:
+    """Load user-defined configuration from a JSON file.
 
     Args:
-        file_path: Path to the YAML configuration file.
+        file_path: Path to the JSON configuration file.
 
     Returns:
         A dictionary containing the configuration data, or an empty dict if not found.
@@ -48,9 +47,9 @@ def load_yaml_config(file_path: str) -> Dict[str, Any]:
         return {}
 
     try:
-        with open(path, "r", encoding="utf-8") as file:
-            return yaml.safe_load(file) or {}
-    except (yaml.YAMLError, OSError) as exception:
+        with open(path, "r", encoding="utf-8-sig") as file:
+            return json.load(file) or {}
+    except (json.JSONDecodeError, OSError) as exception:
         logger.error(f"Failed to load configuration from '{file_path}': {exception}")
         return {}
 
@@ -59,7 +58,7 @@ def load_yaml_config(file_path: str) -> Dict[str, Any]:
 class SimulationConfig:
     """Holds configuration parameters for a complete simulation run."""
 
-    # User defined parameters (loaded from YAML)
+    # User defined parameters (loaded from JSON)
     model_a: str
     model_b: str
     persona_a: str
@@ -77,27 +76,27 @@ class SimulationConfig:
     supabase_anon_key: str
 
     @classmethod
-    def load(cls, yaml_path: str = "config/simulation.yaml") -> "SimulationConfig":
-        """Load the simulation configuration from YAML and environment variables.
+    def load(cls, json_path: str = "config/simulation.json") -> "SimulationConfig":
+        """Load the simulation configuration from JSON and environment variables.
 
         Args:
-            yaml_path: The path to the user-defined YAML configuration file.
+            json_path: The path to the user-defined JSON configuration file.
 
         Returns:
             A populated SimulationConfig instance.
         """
         load_environment_variables()
-        config_data = load_yaml_config(yaml_path)
+        config_data = load_json_config(json_path)
 
-        # Extraction from YAML with defaults
+        # Extraction from JSON with defaults
         agents = config_data.get("agents", {})
         agent_a = agents.get("agent_a", {})
         agent_b = agents.get("agent_b", {})
         sim = config_data.get("simulation", {})
 
         return cls(
-            model_a=agent_a.get("model", "openai/gpt-4o-mini"),
-            model_b=agent_b.get("model", "openai/gpt-4o-mini"),
+            model_a=agent_a.get("model", "google/gemma-3n-e4b-it"),
+            model_b=agent_b.get("model", "google/gemma-3n-e4b-it"),
             persona_a=agent_a.get("persona", "Chief Technology Officer"),
             persona_b=agent_b.get("persona", "Financial Analyst"),
             temperature_a=float(agent_a.get("temperature", 1.0)),

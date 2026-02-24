@@ -18,7 +18,7 @@ The codebase is built on **team-friendly principles**: simple over clever, reada
 - `parrotlm/agent.py`: Single LLM agent managing model configuration, history windows, retries, and API calls.
 - `parrotlm/orchestrator.py`: Manages the simulation run, orchestrating the back-and-forth between two agents and generating structured logs.
 - `parrotlm/prompt_utils.py`: Constructs system prompts with strict constraints (dialogue only, zero narration).
-- `parrotlm/simulation_config.py`: Configuration loader (YAML for user parameters, environment for secrets).
+- `parrotlm/simulation_config.py`: Configuration loader (JSON for user parameters, environment for secrets).
 - `parrotlm/supabase_client.py` & `parrotlm/supabase_logger.py`: Supabase client singleton and batch log insertion logic.
 - `parrotlm/_logging.py` & `parrotlm/_validators.py`: Core utilities for structured logging and payload validation.
 
@@ -52,24 +52,29 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-4. Configure your simulation parameters in `config/simulation.yaml`:
+4. Configure your simulation parameters in `config/simulation.json`:
 
-```yaml
-agents:
-  agent_a:
-    model: "openai/gpt-4o-mini"
-    persona: "Chief Technology Officer"
-    temperature: 1.0
-  agent_b:
-    model: "openai/gpt-4o-mini"
-    persona: "Financial Analyst"
-    temperature: 1.0
-
-simulation:
-  num_turns: 10
-  initial_message: "What is your outlook on AI investment over the next 12 months?"
-  max_tokens: 1000
-  context_window: 5
+```json
+{
+  "agents": {
+    "agent_a": {
+      "model": "openai/gpt-4o-mini",
+      "persona": "Chief Technology Officer",
+      "temperature": 1.0
+    },
+    "agent_b": {
+      "model": "openai/gpt-4o-mini",
+      "persona": "Financial Analyst",
+      "temperature": 1.0
+    }
+  },
+  "simulation": {
+    "num_turns": 10,
+    "initial_message": "What is your outlook on AI investment over the next 12 months?",
+    "max_tokens": 1000,
+    "context_window": 5
+  }
+}
 ```
 
 5. Run the simulation:

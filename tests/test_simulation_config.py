@@ -1,4 +1,4 @@
-import yaml
+import json
 from parrotlm.simulation_config import SimulationConfig
 
 
@@ -7,8 +7,8 @@ def test_load_returns_simulation_config_instance():
     assert isinstance(config, SimulationConfig)
 
 
-def test_load_from_yaml(tmp_path):
-    config_file = tmp_path / "test_config.yaml"
+def test_load_from_json(tmp_path):
+    config_file = tmp_path / "test_config.json"
     data = {
         "agents": {
             "agent_a": {"model": "model-a", "persona": "persona-a", "temperature": 0.5},
@@ -21,10 +21,10 @@ def test_load_from_yaml(tmp_path):
             "context_window": 2,
         },
     }
-    with open(config_file, "w") as f:
-        yaml.dump(data, f)
+    with open(config_file, "w", encoding="utf-8") as f:
+        json.dump(data, f)
 
-    config = SimulationConfig.load(yaml_path=str(config_file))
+    config = SimulationConfig.load(json_path=str(config_file))
 
     assert config.model_a == "model-a"
     assert config.persona_a == "persona-a"
@@ -43,18 +43,18 @@ def test_load_uses_secrets_from_env(monkeypatch, tmp_path):
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-key")
 
-    config_file = tmp_path / "empty.yaml"
-    with open(config_file, "w") as f:
+    config_file = tmp_path / "empty.json"
+    with open(config_file, "w", encoding="utf-8") as f:
         f.write("{}")
 
-    config = SimulationConfig.load(yaml_path=str(config_file))
+    config = SimulationConfig.load(json_path=str(config_file))
     assert config.openrouter_api_key == "secret-key"
     assert config.supabase_url == "https://example.supabase.co"
     assert config.supabase_anon_key == "anon-key"
 
 
-def test_load_with_missing_yaml(caplog):
+def test_load_with_missing_json(caplog):
     # Should use defaults
-    config = SimulationConfig.load(yaml_path="non_existent.yaml")
+    config = SimulationConfig.load(json_path="non_existent.json")
     assert config.model_a == "openai/gpt-4o-mini"
-    assert "Configuration file 'non_existent.yaml' not found" in caplog.text
+    assert "Configuration file 'non_existent.json' not found" in caplog.text
