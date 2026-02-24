@@ -21,13 +21,19 @@ The codebase adheres strictly to team-friendly principles: simple over clever, r
 - `agent.py`: Single LLM agent managing model config, history window, Tenacity retries, and API calls.
 - `orchestrator.py`: Orchestrates multi-turn conversations between two agents and generates structured logs.
 - `prompt_utils.py`: Constructs strict, dialogue-only system prompts from persona strings.
-- `simulation_config.py`: Environment-based configuration loader with safe defaults.
+- `simulation_config.py`: Environment-based configuration loader with support for `.env` and `simulation.json` overrides.
 - `supabase_client.py`: Supabase client singleton managing credential resolution and caching.
 - `supabase_logger.py`: Sanitizes and batch-inserts simulation logs into the Supabase database.
 
 ### Utilities (`parrotlm/`)
-- `_logging.py`: Structured JSON logging utilities (formatters, event extraction, exception filtering).
+- `_logging.py`: Structured dual-logging utilities (formatted console output + JSONlines file logging).
 - `_validators.py`: Input validation helpers (type casting, required field verification).
+
+### Configuration (`config/`)
+- `simulation.json`: Static scenario configuration (personas, models, turn counts) used as a base or override.
+
+### Logs (`logs/`)
+- `parrotlm.log`: Local persistent store for structured JSON interaction telemetry.
 
 ### Tests (`tests/`)
 - `test_agent.py`
@@ -92,6 +98,16 @@ Purpose:
 - Safely casts and verifies standard inputs and API response payloads.
 - Stops bad data early before it reaches orchestration or database logic.
 
+### `config/simulation.json`
+Purpose:
+- Provides a portable way to define simulation parameters (personas, models).
+- Integrated into `SimulationConfig` as a middle-tier priority source.
+
+### `logs/parrotlm.log`
+Purpose:
+- Captures every log event (info, warning, error) as a discrete JSON object.
+- Serves as the primary source for local debugging and telemetry audit.
+
 ## Dependency Graph
 ```mermaid
 graph TD
@@ -101,9 +117,15 @@ graph TD
     main --> supalog[parrotlm/supabase_logger.py]
     main --> supacli[parrotlm/supabase_client.py]
 
+    cfg --> json[config/simulation.json]
+    cfg --> env[.env]
+
     orch --> agent[parrotlm/agent.py]
     orch --> val[parrotlm/_validators.py]
     orch --> log[parrotlm/_logging.py]
+
+    log --> file[logs/parrotlm.log]
+    log --> stdlib[Python logging]
 
     supalog --> supacli
 
@@ -111,12 +133,13 @@ graph TD
     agent --> log
     agent --> openrouter[OpenRouter API]
 
-    log --> stdlib[Python logging]
     supacli --> supabase[Supabase Database]
 ```
 
 ## Supporting Files
 - `README.md`: Project-level usage and setup.
 - `requirements.txt`: Python runtime dependencies.
+- `runtime.txt`: Specified Python version for compatibility.
 - `.env.example`: Environment variable template.
+- `.env`: Local environment secrets (not committed).
 - `LICENSE`: Apache 2.0 license.
