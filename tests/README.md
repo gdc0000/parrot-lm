@@ -1,120 +1,70 @@
-﻿# Test Suite Overview
+# Test Suite Overview
 
-This folder contains unit tests for the ParrotLM core package (`parrotlm`).
+This folder contains unit tests for the ParrotLM framework. The codebase maintains 100% test coverage for both happy and failure paths across all modules, ensuring high robustness and reliability.
 
 ## Structure
-- `test_simulation_config.py`
-- `test_prompt_utils.py`
-- `test_analysis_utils.py`
+
+- `test_agent.py`
+- `test_logging.py`
+- `test_main.py`
 - `test_orchestrator.py`
-- `test_session_state.py`
-- `test_sidebar.py`
-- `test_chat_setup_tab.py`
-- `test_analysis_tabs.py`
-- `test_integration_pipeline.py`
+- `test_prompt_utils.py`
+- `test_simulation_config.py`
+- `test_supabase_client.py`
+- `test_supabase_logger.py`
+- `test_validators.py`
 
 ## Test Files
 
-### `test_simulation_config.py`
-What it does:
-- Verifies that core constants exist (`NUM_TURNS`, `DATA_DIR`).
-- Verifies type and minimal validity (`NUM_TURNS > 0`, non-empty `DATA_DIR`).
+### `test_agent.py`
+- **What it does:** Verifies the `Agent` class initialization, history bounding/pruning, request formatting, and metrics extraction. Specifically tests the `Tenacity` exponential backoff retry logic.
+- **Why:** The agent handles direct interaction with the OpenRouter API. This ensures transient network failures are retried and token metrics are accurately captured without crashing the simulation.
 
-Why:
-- These constants drive defaults in the app.
-- A missing or invalid constant would break startup or produce invalid runtime behavior.
+### `test_logging.py`
+- **What it does:** Verifies structured JSON logging utilities, event extraction, formatters (`HumanReadableFormatter` and `JsonLineFormatter`), and exception filtering logic.
+- **Why:** Structured logging is critical for observability. These tests guarantee that logs are always serializable, properly formatted, and that sensitive or unrecoverable exceptions are properly handled.
 
-### `test_prompt_utils.py`
-What it does:
-- Verifies `construct_system_prompt(persona)` includes:
-  - the provided persona,
-  - key instruction markers (for dialogue-only behavior).
-
-Why:
-- Prompt composition is critical for agent behavior.
-- This catches regressions where persona injection or core constraints are accidentally removed.
-
-### `test_analysis_utils.py`
-What it does:
-- Verifies category word counting (`count_custom_words`) is correct.
-- Verifies log processing (`process_logs`) adds expected analysis columns.
-- Verifies dataframe input validation for `process_logs` and `process_custom_lexicon`.
-- Uses mocking for `nltk` resource checks/downloads and for `analyze_text` where needed.
-
-Why:
-- Analysis output feeds charts and CSV export.
-- Mocking keeps tests deterministic and avoids network/resource dependency for NLTK downloads.
+### `test_main.py`
+- **What it does:** End-to-end tests the `main.py` execution flow (initialization, configuration, execution, processing) using mocks to avoid network calls.
+- **Why:** Ensures the top-level orchestration ties all the individual components together correctly and securely logs unhandled exceptions with their respective failed phase.
 
 ### `test_orchestrator.py`
-What it does:
-- Verifies `Agent.generate_response` returns expected fields and token metadata.
-- Verifies `Orchestrator.run_simulation(num_turns=1)` emits two log entries (one per agent turn).
-- Verifies distinct `max_history_turns` are applied independently to Agent A and Agent B.
-- Verifies invalid non-dictionary `params` are rejected early with a clear error.
-- Mocks OpenAI client calls and injects a fake API key.
+- **What it does:** Tests the conversational ping-pong orchestration between two agents. Verifies turn limits, refusal detection, log entry generation, and parameter validation.
+- **Why:** The Orchestrator manages the core multi-turn simulation loop. These tests verify the state machine transitions properly, stops when an agent refuses to answer, and emits properly structured logs.
 
-Why:
-- Orchestration is the core runtime path.
-- Mocking avoids external API calls, making tests fast and reliable while still validating conversation flow and log schema.
+### `test_prompt_utils.py`
+- **What it does:** Verifies the injection of personas and strict dialogue-only formatting constraints into the system prompts.
+- **Why:** Ensures the LLM receives the correct directives to act as a conversational partner rather than a narrator.
 
-### `test_session_state.py`
-What it does:
-- Verifies `initialize_session_state` sets required defaults when storage is empty.
-- Verifies `initialize_session_state` correctly loads persisted logs from local storage.
-- Verifies `clear_local_data` clears both local storage and in-memory dataframe.
-- Verifies `append_and_persist_logs` appends rows and persists merged records.
+### `test_simulation_config.py`
+- **What it does:** Tests environment variable loading, fallback defaults, type casting (integers and floats), and the optional `python-dotenv` initialization.
+- **Why:** Ensures the application never crashes due to missing or malformed environment configuration, always falling back to safe defaults while logging the issue.
 
-Why:
-- Session-state and local persistence are critical to consistent UI behavior.
-- These tests protect against regressions in log initialization, reset, and persistence flow.
+### `test_supabase_client.py`
+- **What it does:** Tests the lazy initialization of the Supabase client singleton, credential resolution, and cache resetting.
+- **Why:** Verifies the client handles missing credentials gracefully and accurately manages the HTTP connection pool for performance.
 
-### `test_sidebar.py`
-What it does:
-- Verifies API-key environment synchronization behavior.
-- Verifies `render_sidebar` maps Streamlit control values into `TechnicalSettings` correctly.
-- Verifies blank API key input does not overwrite an existing env key.
+### `test_supabase_logger.py`
+- **What it does:** Tests the batch upload process to Supabase, including checking client availability, strictly sanitizing log dictionaries to match the database schema, and handling insertion failures.
+- **Why:** Ensures the application doesn't upload malformed records (which would cause PostgreSQL batch failures) and properly reports network or schema errors.
 
-Why:
-- Sidebar values feed runtime orchestration parameters directly.
-- These tests catch configuration regressions before they impact live simulation runs.
+### `test_validators.py`
+- **What it does:** Tests all input normalization and validation functions (strings, integers, generation parameters, response payloads).
+- **Why:** Ensures invalid or missing required data throws immediate, highly-contextual errors before trickling down into confusing downstream bugs.
 
-### `test_chat_setup_tab.py`
-What it does:
-- Verifies scenario naming behavior.
-- Verifies simulation execution success/failure handling in `_execute_simulation`.
-- Verifies log persistence path converts simulation logs into a dataframe before storage sync.
+## Running the Tests
 
-Why:
-- Chat setup is the main user workflow entrypoint.
-- These tests ensure API/runtime failures are surfaced safely and success paths persist data as expected.
+To run the entire test suite and verify everything passes:
 
-### `test_analysis_tabs.py`
-What it does:
-- Verifies custom lexicon normalization behavior.
-- Verifies aggregate metric computation used by charts.
+```bash
+python -m pytest
+```
 
-Why:
-- Analysis output powers user-facing comparisons and exported CSV data.
-- Helper-level tests keep analysis transformations stable during refactors.
-
-### `test_integration_pipeline.py`
-What it does:
-- Runs an integration-style pipeline from orchestrator output -> session persistence -> analysis processing.
-- Uses mocked OpenAI responses to keep the flow deterministic.
-
-Why:
-- Confirms cross-module contracts work together, not only in isolated unit tests.
-- Provides a higher-confidence regression safety net for end-to-end data flow.
-
-## Run Tests
-From project root:
-
+To run a quieter version of the test suite:
 ```bash
 python -m pytest -q
 ```
 
 ## Design Notes
-- Most tests are unit-level and intentionally isolate external services.
-- Integration-style coverage is included where feasible (see `test_integration_pipeline.py`).
-- External dependencies (OpenRouter/OpenAI, NLTK downloads) are mocked to avoid flaky CI behavior.
-- Coverage is focused on contract stability (inputs/outputs/fields), not UI rendering.
+- **Isolation:** Tests extensively mock external APIs (OpenRouter, Supabase) using Python's `unittest.mock`. This keeps tests fast, deterministic, and free of network dependencies or quota consumption.
+- **Comprehensive Coverage:** Every public function has at least one test for the happy path and one for a failure case, strictly adhering to our team-friendly engineering principles.

@@ -71,7 +71,9 @@ class TestUploadSessionLogs:
     @patch("parrotlm.supabase_logger.get_supabase_client")
     def test_returns_false_on_insert_exception(self, mock_get_client):
         mock_table = MagicMock()
-        mock_table.insert.return_value.execute.side_effect = RuntimeError("network error")
+        mock_table.insert.return_value.execute.side_effect = RuntimeError(
+            "network error"
+        )
         mock_client = MagicMock()
         mock_client.table.return_value = mock_table
         mock_get_client.return_value = mock_client
@@ -82,8 +84,8 @@ class TestUploadSessionLogs:
         assert isinstance(result[1], str)
 
     def test_clean_log_entry_strips_unknown_keys(self):
-        entry = {"experiment_id": "e1", "unknown_key": "discard", "turn_id": 0}
-        cleaned = supabase_logger._clean_log_entry(entry)
-        assert "unknown_key" not in cleaned
-        assert cleaned["experiment_id"] == "e1"
-        assert cleaned["turn_id"] == 0
+        entry = [{"experiment_id": "e1", "unknown_key": "discard", "turn_id": 0}]
+        cleaned = supabase_logger.sanitize_log_entries(entry)
+        assert "unknown_key" not in cleaned[0]
+        assert cleaned[0]["experiment_id"] == "e1"
+        assert cleaned[0]["turn_id"] == 0

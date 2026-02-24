@@ -1,197 +1,122 @@
 # ParrotLM Module Map
 
 ## Overview
-ParrotLM is a Streamlit-based Python app for simulating conversations between two LLM agents and analyzing the generated logs.
+ParrotLM is a Python framework for simulating multi-turn conversations between two LLM agents and logging the interaction telemetry to a Supabase database.
 
 Current runtime flow:
-1. `gui_app.py` initializes Streamlit, local storage, and tabs.
-2. UI modules collect configuration and run simulations through `Orchestrator`.
-3. Conversation logs are stored in `st.session_state` and browser local storage.
-4. Analysis tabs process in-memory logs with stylometric and custom lexicon metrics.
+1. `main.py` serves as the entrypoint. It initializes infrastructure, configures agents, and kicks off the execution.
+2. `simulation_config.py` loads environment variables to set up the scenario.
+3. `orchestrator.py` manages the back-and-forth interaction between two `Agent` instances.
+4. Each `Agent` makes resilient calls to the OpenRouter API.
+5. `supabase_logger.py` batches the resulting interaction logs and safely uploads them to the `session_logs` table.
 
-The app uses the OpenAI Python client configured for OpenRouter.
+The codebase adheres strictly to team-friendly principles: simple over clever, readable over efficient, single-purpose functions, and 100% test coverage.
 
 ## Repository Structure
 
 ### Entrypoint
-- `gui_app.py`: top-level Streamlit app composition and tab wiring.
+- `main.py`: Top-level execution pipeline (initialize, configure, execute, process).
 
-### Core package
-- `parrotlm/simulation_config.py`: default simulation constants and config validation.
-- `parrotlm/prompt_utils.py`: system-prompt construction from persona text.
-- `parrotlm/_validators.py`: input validation helpers and API-key resolver.
-- `parrotlm/_logging.py`: structured logging utilities.
-- `parrotlm/agent.py`: single LLM agent — model config, history window, retries, and API calls.
-- `parrotlm/orchestrator.py`: orchestrates multi-turn conversations between two agents.
-- `parrotlm/analysis_utils.py`: NLTK-based text metrics and custom lexicon counting.
+### Core Package (`parrotlm/`)
+- `agent.py`: Single LLM agent managing model config, history window, Tenacity retries, and API calls.
+- `orchestrator.py`: Orchestrates multi-turn conversations between two agents and generates structured logs.
+- `prompt_utils.py`: Constructs strict, dialogue-only system prompts from persona strings.
+- `simulation_config.py`: Environment-based configuration loader with safe defaults.
+- `supabase_client.py`: Supabase client singleton managing credential resolution and caching.
+- `supabase_logger.py`: Sanitizes and batch-inserts simulation logs into the Supabase database.
 
-### UI package
-- `parrotlm/ui/sidebar.py`: sidebar controls (API key and technical settings).
-- `parrotlm/ui/chat_setup_tab.py`: chatbot setup UI and simulation execution flow.
-- `parrotlm/ui/analysis_tabs.py`: basic and stylometric analysis tabs.
-- `parrotlm/ui/session_state.py`: session-state initialization and local persistence helpers.
-- `parrotlm/ui/__init__.py`: UI package marker.
+### Utilities (`parrotlm/`)
+- `_logging.py`: Structured JSON logging utilities (formatters, event extraction, exception filtering).
+- `_validators.py`: Input validation helpers (type casting, required field verification).
 
-### Tests
-- `tests/test_simulation_config.py`
-- `tests/test_prompt_utils.py`
-- `tests/test_analysis_utils.py`
-- `tests/test_orchestrator.py`
-- `tests/test_session_state.py`
-- `tests/README.md`: test intent and execution notes.
+### Tests (`tests/`)
+- `test_agent.py`
+- `test_logging.py`
+- `test_main.py`
+- `test_orchestrator.py`
+- `test_prompt_utils.py`
+- `test_simulation_config.py`
+- `test_supabase_client.py`
+- `test_supabase_logger.py`
+- `test_validators.py`
+- `README.md`: Test suite documentation.
 
 ## Module Details
 
+### `main.py`
+Purpose:
+- Ties together the configuration, execution, and data upload phases of the simulation.
+- Safely catches and logs unhandled exceptions with their exact phase context.
+
 ### `parrotlm/simulation_config.py`
 Purpose:
-- Defines default runtime values:
-  - `NUM_TURNS`
-  - `DATA_DIR`
-- Exposes `validate_simulation_config(...)` for input validation.
-
-Used by:
-- `gui_app.py` (default turns)
-- tests in `tests/test_simulation_config.py`
-
-### `parrotlm/prompt_utils.py`
-Purpose:
-- Builds constrained dialogue-only system prompts from persona strings.
-
-Key export:
-- `construct_system_prompt(persona: str) -> str`
-
-Used by:
-- `parrotlm/ui/chat_setup_tab.py`
-- tests in `tests/test_prompt_utils.py`
-
-### `parrotlm/_validators.py`
-Purpose:
-- Validates and normalizes caller inputs (strings, integers, dicts, response payloads).
-- Resolves the OpenRouter API key from env or `.env`.
-
-Used by:
-- `parrotlm/agent.py`
-- `parrotlm/orchestrator.py`
-
-### `parrotlm/_logging.py`
-Purpose:
-- `log_structured`: emits machine-readable log events with JSON context.
-- `is_retryable_exception`: filter for tenacity retry decorator.
-
-Used by:
-- `parrotlm/agent.py`
-- `parrotlm/orchestrator.py`
+- Loads environment variables (`MODEL_A`, `NUM_TURNS`, `OPENROUTER_API_KEY`, etc.).
+- Safely casts types and provides defaults if variables are missing.
+- Optionally loads a `.env` file for local development convenience.
 
 ### `parrotlm/agent.py`
 Purpose:
-- Encapsulates a single LLM agent: model slug, system prompt, conversation history, and API calls.
-- Applies a bounded sliding-window history and exponential-backoff retries.
-
-Key export:
-- `Agent`
-
-Used by:
-- `parrotlm/orchestrator.py`
-- tests in `tests/test_orchestrator.py`
+- Encapsulates a single LLM agent interacting with OpenRouter.
+- Keeps conversation history role-aligned and bounded by a context window.
+- Manages transient network errors using an exponential backoff retry decorator.
 
 ### `parrotlm/orchestrator.py`
 Purpose:
-- Coordinates a multi-turn conversation between two `Agent` instances.
-- Normalizes per-turn metadata into structured log entries.
-- Re-exports `Agent` for backward-compatible imports.
+- Coordinates the conversational ping-pong between `Agent A` and `Agent B`.
+- Normalizes per-turn metadata into a structured log dictionary.
+- Checks for stop conditions (like model refusals) to safely halt the simulation.
 
-Key outputs per log entry:
-- `experiment_id`, `turn_id`, `scenario`, `speaker_model`, `responder_model`
-- `timestamp`, `latency_ms`, `input_tokens`, `output_tokens`
-- `content`, `finish_reason`, `is_refusal`, `system_prompt_snapshot`
-
-Used by:
-- `parrotlm/ui/chat_setup_tab.py`
-- tests in `tests/test_orchestrator.py`
-
-### `parrotlm/analysis_utils.py`
+### `parrotlm/prompt_utils.py`
 Purpose:
-- Computes stylometric metrics from text content.
-- Adds custom category-based word counts.
+- Injects personas into a highly constrained system prompt.
+- Explicitly forbids narration, actions, brackets, and asterisks.
 
-Key exports:
-- `ensure_nltk_resources(...)`
-- `analyze_text(text)`
-- `process_logs(df)`
-- `count_custom_words(text, category_dict)`
-- `process_custom_lexicon(df, category_dict)`
-
-Used by:
-- `parrotlm/ui/analysis_tabs.py`
-- tests in `tests/test_analysis_utils.py`
-
-### `parrotlm/ui/sidebar.py`
+### `parrotlm/supabase_client.py`
 Purpose:
-- Renders technical controls and API key input.
-- Returns typed settings (`TechnicalSettings`) and clear-data trigger.
+- Manages the lifecycle of the Supabase client object.
+- Caches the client at the module level to reuse HTTP connection pools across operations.
 
-Used by:
-- `gui_app.py`
-
-### `parrotlm/ui/chat_setup_tab.py`
+### `parrotlm/supabase_logger.py`
 Purpose:
-- Renders chatbot setup form.
-- Builds agent configs and runs `Orchestrator.run_simulation(...)`.
-- Streams live messages and persists resulting logs.
+- Verifies Supabase client availability.
+- Sanitizes generated logs to perfectly match the strict PostgreSQL schema.
+- Executes the batch insert into the `session_logs` table.
 
-Used by:
-- `gui_app.py`
-
-### `parrotlm/ui/analysis_tabs.py`
+### `parrotlm/_logging.py`
 Purpose:
-- Renders:
-  - Basic analysis tab (latency/token summaries).
-  - Stylometric tab (POS ratios, custom lexicon, CSV export).
+- Formats standard library logs into either human-readable console output or machine-readable JSONlines.
+- Provides `log_structured` for easy, context-rich telemetry.
 
-Used by:
-- `gui_app.py`
-
-### `parrotlm/ui/session_state.py`
+### `parrotlm/_validators.py`
 Purpose:
-- Initializes required session keys.
-- Loads and clears browser-persisted logs.
-- Appends/persists newly generated logs.
-
-Used by:
-- `gui_app.py`
-- `parrotlm/ui/chat_setup_tab.py`
-- tests in `tests/test_session_state.py`
+- Safely casts and verifies standard inputs and API response payloads.
+- Stops bad data early before it reaches orchestration or database logic.
 
 ## Dependency Graph
 ```mermaid
 graph TD
-    app[gui_app.py] --> cfg[parrotlm/simulation_config.py]
-    app --> side[parrotlm/ui/sidebar.py]
-    app --> chat[parrotlm/ui/chat_setup_tab.py]
-    app --> tabs[parrotlm/ui/analysis_tabs.py]
-    app --> state[parrotlm/ui/session_state.py]
-
-    chat --> prompt[parrotlm/prompt_utils.py]
-    chat --> orch[parrotlm/orchestrator.py]
-    tabs --> analysis[parrotlm/analysis_utils.py]
-    chat --> state
+    main[main.py] --> cfg[parrotlm/simulation_config.py]
+    main --> orch[parrotlm/orchestrator.py]
+    main --> prompt[parrotlm/prompt_utils.py]
+    main --> supalog[parrotlm/supabase_logger.py]
+    main --> supacli[parrotlm/supabase_client.py]
 
     orch --> agent[parrotlm/agent.py]
     orch --> val[parrotlm/_validators.py]
     orch --> log[parrotlm/_logging.py]
+
+    supalog --> supacli
+
     agent --> val
     agent --> log
-    agent --> openrouter[OpenRouter via OpenAI client]
+    agent --> openrouter[OpenRouter API]
 
-    state --> session[st.session_state]
-    state --> local[Browser local storage]
+    log --> stdlib[Python logging]
+    supacli --> supabase[Supabase Database]
 ```
 
 ## Supporting Files
-- `README.md`: project-level usage and setup.
-- `requirements.txt`: runtime dependencies.
-- `.env.example`: API key template (`OPENROUTER_API_KEY`).
-- `runtime.txt`: runtime pinning for deployment environments.
+- `README.md`: Project-level usage and setup.
+- `requirements.txt`: Python runtime dependencies.
+- `.env.example`: Environment variable template.
 - `LICENSE`: Apache 2.0 license.
-
-Updated to reflect the current repository state.

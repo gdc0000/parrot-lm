@@ -1,5 +1,6 @@
 import os
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import mock_open, patch
 
 import pytest
@@ -13,14 +14,14 @@ def _agent_config(
     system_prompt: str,
     user_persona_snapshot: str = "",
     max_history_turns: int = 20,
-    params: dict | None = None,
+    parameters: Any = None,
 ) -> AgentConfig:
     return AgentConfig(
         model=model,
         system_prompt=system_prompt,
         user_persona_snapshot=user_persona_snapshot,
         max_history_turns=max_history_turns,
-        params={} if params is None else params,
+        parameters={} if parameters is None else parameters,
     )
 
 
@@ -106,10 +107,19 @@ def test_agent_generate_response_returns_expected_fields(_mock_openai):
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
 @patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
-    agent_a_config = _agent_config("fake/model-a", "Persona A", user_persona_snapshot="Persona A")
-    agent_b_config = _agent_config("fake/model-b", "Persona B", user_persona_snapshot="Persona B")
+    agent_a_config = _agent_config(
+        "fake/model-a", "Persona A", user_persona_snapshot="Persona A"
+    )
+    agent_b_config = _agent_config(
+        "fake/model-b", "Persona B", user_persona_snapshot="Persona B"
+    )
 
-    orchestrator = Orchestrator(agent_a_config, agent_b_config, scenario_name="test", openrouter_api_key="test-key")
+    orchestrator = Orchestrator(
+        agent_a_config,
+        agent_b_config,
+        scenario_name="test",
+        openrouter_api_key="test-key",
+    )
     logs = list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
     assert len(logs) == 2
@@ -137,11 +147,16 @@ def test_orchestrator_uses_distinct_history_windows_per_agent(_mock_openai):
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
 @patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestrator_rejects_non_dict_agent_params(_mock_openai):
-    agent_a_config = _agent_config("fake/model-a", "Persona A", params=["invalid"])
+    agent_a_config = _agent_config("fake/model-a", "Persona A", parameters=["invalid"])
     agent_b_config = _agent_config("fake/model-b", "Persona B")
 
     with pytest.raises(TypeError):
-        Orchestrator(agent_a_config, agent_b_config, scenario_name="test", openrouter_api_key="test-key")
+        Orchestrator(
+            agent_a_config,
+            agent_b_config,
+            scenario_name="test",
+            openrouter_api_key="test-key",
+        )
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
@@ -160,7 +175,9 @@ def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
     assert response["content"] == ""
     assert response["is_refusal"] is True
     assert response["output_tokens"] == 0
-    assert len(agent.history) == 2  # system + user; assistant is not appended on blank content.
+    assert (
+        len(agent.history) == 2
+    )  # system + user; assistant is not appended on blank content.
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
@@ -177,8 +194,9 @@ def test_agent_context_window_never_starts_with_assistant_after_trimming(_mock_o
     agent.generate_response("first")
     agent.generate_response("second")
 
-    recording_client = agent.client
-    second_call_messages = recording_client.chat.completions.calls[1]["messages"]
+    recording_client = getattr(agent, "client", agent.client)
+    completions: Any = recording_client.chat.completions
+    second_call_messages = completions.calls[1]["messages"]
     sent_roles = [message["role"] for message in second_call_messages]
 
     assert sent_roles[0] == "system"
@@ -206,8 +224,12 @@ def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
         "is_refusal": True,
     }
 
-    with patch.object(orchestrator.agent_a, "generate_response", return_value=refusal_response):
-        with patch.object(orchestrator.agent_b, "generate_response") as mock_agent_b_generate:
+    with patch.object(
+        orchestrator.agent_a, "generate_response", return_value=refusal_response
+    ):
+        with patch.object(
+            orchestrator.agent_b, "generate_response"
+        ) as mock_agent_b_generate:
             logs = list(orchestrator.run_simulation(num_turns=3, initial_message="Hi"))
 
     assert len(logs) == 1
@@ -226,7 +248,11 @@ def test_run_simulation_wraps_agent_failure(_mock_openai):
         openrouter_api_key="test-key",
     )
 
-    with patch.object(orchestrator.agent_a, "generate_response", side_effect=RuntimeError("api failure")):
+    with patch.object(
+        orchestrator.agent_a,
+        "generate_response",
+        side_effect=RuntimeError("api failure"),
+    ):
         with pytest.raises(RuntimeError) as raised:
             list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
@@ -252,7 +278,9 @@ def test_run_simulation_wraps_invalid_agent_payload(_mock_openai):
         # missing token and finish fields on purpose
     }
 
-    with patch.object(orchestrator.agent_a, "generate_response", return_value=invalid_payload):
+    with patch.object(
+        orchestrator.agent_a, "generate_response", return_value=invalid_payload
+    ):
         with pytest.raises(RuntimeError) as raised:
             list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 

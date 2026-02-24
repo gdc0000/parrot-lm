@@ -1,36 +1,31 @@
 # ParrotLM
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-ParrotLM is a Python framework for simulating and analyzing conversations between two LLM chatbots through a Streamlit UI. It supports custom personas, OpenRouter model slugs, live turn-by-turn execution, and built-in linguistic analysis.
+ParrotLM is a Python framework for simulating and analyzing multi-turn conversations between two LLM agents. It supports custom personas, OpenRouter model slugs, strict dialogue-only constraints, and automatically uploads structured interaction logs to a Supabase database.
+
+The codebase is built on **team-friendly principles**: simple over clever, readable over efficient, and optimized for the next developer. Every function has a single responsibility, explanatory naming, comprehensive docstrings, context-rich error handling, and full unit test coverage.
 
 ## Features
-- Two-chatbot conversation simulation with live streaming in the UI.
-- Persona-driven system prompt construction with strict dialogue-only constraints.
-- OpenRouter integration via the OpenAI Python client.
-- Technical runtime controls from the sidebar:
-  - turns per chatbot,
-  - temperature per chatbot,
-  - max tokens,
-  - context window (history depth).
-- Analysis tabs:
-  - basic metrics (average latency and output tokens by model),
-  - stylometric analysis with NLTK (token/sentence metrics and POS ratios),
-  - custom lexicon categories (LIWC-style word counting),
-  - CSV export of analyzed data.
-- Browser-local persistence of run logs (`streamlit-local-storage`) with clear/reset support.
+- **Multi-turn conversation simulation**: Two agents automatically interact based on provided personas and an initial prompt.
+- **OpenRouter integration**: Access a wide variety of models using a single API via the OpenAI Python client.
+- **Supabase Cloud Logging**: Automatically sanitizes and uploads generated simulation logs directly to a `session_logs` Supabase table.
+- **Robustness**: Built-in exponential backoff retries (via Tenacity) and robust validation/error handling.
+- **Structured JSON Logging**: All application events are logged as machine-readable JSONlines for easy debugging and observability.
+- **Clean Architecture**: Single-responsibility functions, explicit parameters, and 100% test coverage.
 
 ## Current Architecture
-- `gui_app.py`: Streamlit entrypoint and tab composition.
-- `parrotlm/ui/sidebar.py`: API key input and technical settings controls.
-- `parrotlm/ui/chat_setup_tab.py`: chatbot setup and simulation execution flow.
-- `parrotlm/orchestrator.py`: chatbot runtime, retry logic, log generation, optional JSONL save.
-- `parrotlm/prompt_utils.py`: persona-to-system-prompt construction.
-- `parrotlm/analysis_utils.py`: NLTK and custom lexicon analysis functions.
-- `parrotlm/ui/session_state.py`: session state and local storage sync helpers.
+- `main.py`: The main entrypoint. Initializes infrastructure, configures agents, executes the simulation, and uploads results.
+- `parrotlm/agent.py`: Single LLM agent managing model configuration, history windows, retries, and API calls.
+- `parrotlm/orchestrator.py`: Manages the simulation run, orchestrating the back-and-forth between two agents and generating structured logs.
+- `parrotlm/prompt_utils.py`: Constructs system prompts with strict constraints (dialogue only, zero narration).
+- `parrotlm/simulation_config.py`: Environment-based configuration loader.
+- `parrotlm/supabase_client.py` & `parrotlm/supabase_logger.py`: Supabase client singleton and batch log insertion logic.
+- `parrotlm/_logging.py` & `parrotlm/_validators.py`: Core utilities for structured logging and payload validation.
 
 ## Requirements
 - Python 3.10+
 - OpenRouter API key (`OPENROUTER_API_KEY`)
+- Supabase Project URL and Anon Key (`SUPABASE_URL`, `SUPABASE_ANON_KEY`)
 
 ## Quickstart
 1. Create and activate a virtual environment:
@@ -49,60 +44,44 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Install NLTK resources (required for the stylometric tab):
+3. Configure your environment variables. Copy `.env.example` to `.env` and fill in your credentials and simulation parameters:
 
-```bash
-python -c "import nltk; [nltk.download(r) for r in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng','universal_tagset']]"
+```env
+OPENROUTER_API_KEY=your_openrouter_key
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
+
+MODEL_A=openai/gpt-4o-mini
+MODEL_B=openai/gpt-4o-mini
+PERSONA_A="Chief Technology Officer"
+PERSONA_B="Financial Analyst"
+NUM_TURNS=10
+INITIAL_MESSAGE="What is your outlook on AI investment over the next 12 months?"
+MAX_TOKENS=1000
+TEMPERATURE_A=1.0
+TEMPERATURE_B=1.0
+CONTEXT_WINDOW=5
 ```
 
-4. Set your API key using one of the methods in the Configuration section below.
-
-5. Run the Streamlit app:
+4. Run the simulation:
 
 ```bash
-python -m streamlit run gui_app.py
+python main.py
 ```
 
-## NLTK Setup
-Stylometric analysis requires local NLTK resources. Install them once:
-
-```bash
-python -c "import nltk; [nltk.download(r) for r in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng','universal_tagset']]"
-```
-
-## Configuration
-Set your API key in one of these ways:
-- Environment variable:
-  - `OPENROUTER_API_KEY=...`
-- `.env` file (copy from `.env.example`)
-- Streamlit sidebar input field at runtime
-
-## Run The App
-```bash
-python -m streamlit run gui_app.py
-```
-
-In the UI:
-1. Configure model slugs and personas for Chatbot A and Chatbot B.
-2. Set the initial message.
-3. Tune technical settings in the sidebar.
-4. Start the conversation and review analysis tabs.
-
-## Data Behavior
-- During normal UI usage, logs are stored in:
-  - `st.session_state["all_logs"]`
-  - browser local storage key `parrot_lm_logs`
-- `Orchestrator.save_logs(filepath)` supports JSONL persistence for programmatic usage, but the Streamlit flow currently persists locally in browser storage by default.
+Logs will be output to your console and `logs/parrotlm.log` locally, and the final conversation turns will be uploaded to your Supabase `session_logs` table.
 
 ## Tests
-Run unit tests:
+The codebase maintains 100% test coverage for both happy and failure paths. Run the unit test suite via `pytest`:
 
+```bash
+python -m pytest
+```
+
+To run a quieter version of the tests:
 ```bash
 python -m pytest -q
 ```
 
-See `tests/README.md` for coverage details by module.
-
 ## License
 Licensed under Apache License 2.0. See `LICENSE`.
-

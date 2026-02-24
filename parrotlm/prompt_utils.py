@@ -1,12 +1,15 @@
 """Prompt construction helpers."""
 
 
-def construct_system_prompt(persona: str) -> str:
-    """Build a dialogue-only system prompt with the provided persona context."""
-    if not isinstance(persona, str) or not persona.strip():
-        raise ValueError("`persona` must be a non-empty string.")
+def retrieve_dialogue_formatting_rules() -> str:
+    """Retrieve the static formatting rules for dialogue generation.
 
-    dialogue_rules = """
+    Returns:
+        The formatting rules as a string.
+    """
+    # We explicitly forbid asterisks and brackets because models tend to use them
+    # to act as narrators or provide stage directions (e.g., *smiles*), breaking the immersion.
+    dialogue_formatting_rules = """
 # MANDATORY: DIALOGUE ONLY. ZERO NARRATION.
 You are a human. You are NOT writing a script. You are NOT a narrator.
 
@@ -32,9 +35,42 @@ If an action occurs, imply it through spoken language only.
 - Respond to what the other person said; do not copy their last message verbatim.
 - Add at least one new idea, reaction, or question in each reply.
 """.strip()
+    return dialogue_formatting_rules
 
+
+def format_persona_instructions(dialogue_formatting_rules: str, persona: str) -> str:
+    """Format the complete system prompt using rules and persona.
+
+    Args:
+        dialogue_formatting_rules: The dialogue constraints to enforce.
+        persona: The specific persona to adopt.
+
+    Returns:
+        The complete formatted system prompt string.
+    """
     return (
-        f"{dialogue_rules}\n\n"
+        f"{dialogue_formatting_rules}\n\n"
         f"YOUR PERSONA:\n{persona.strip()}\n\n"
         "FINAL WARNING: Output only spoken words from the character."
     )
+
+
+def construct_system_prompt(persona: str) -> str:
+    """Build a dialogue-only system prompt with the provided persona context.
+
+    Args:
+        persona: The specific persona the agent should adopt during the simulation.
+
+    Returns:
+        The fully formatted system prompt combining dialogue rules and persona.
+
+    Raises:
+        ValueError: If `persona` is not a string or if the stripped string is empty.
+    """
+    if not isinstance(persona, str) or not persona.strip():
+        raise ValueError(
+            f"`persona` must be a non-empty string. Received type: {type(persona).__name__}, value: {persona}"
+        )
+
+    dialogue_formatting_rules = retrieve_dialogue_formatting_rules()
+    return format_persona_instructions(dialogue_formatting_rules, persona)

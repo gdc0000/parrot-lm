@@ -3,57 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from parrotlm.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
 TABLE_NAME = "session_logs"
-
-
-def upload_session_logs(logs: List[Dict[str, Any]]) -> tuple[bool, str]:
-    """Insert *logs* into the Supabase ``session_logs`` table.
-
-    Returns ``(True, "")`` on success and ``(False, error_msg)`` on failure.
-    """
-
-    if not logs:
-        logger.info("upload_skipped | reason=empty_logs")
-        return True, "No logs to upload."
-
-
-    client = get_supabase_client()
-    if client is None:
-        msg = "Supabase client unavailable (check .env)."
-        logger.warning(f"upload_skipped | reason=supabase_client_unavailable | hint={msg}")
-        return False, msg
-
-
-    # Strip keys that Supabase would reject (e.g. the auto-generated `id`).
-    cleaned = [_clean_log_entry(entry) for entry in logs]
-
-    try:
-        response = client.table(TABLE_NAME).insert(cleaned).execute()
-        inserted_count = len(response.data) if response.data else 0
-        logger.info(
-            "upload_success | table=%s rows_inserted=%s",
-            TABLE_NAME,
-            inserted_count,
-        )
-        return True, f"Successfully inserted {inserted_count} rows."
-
-    except Exception as e:
-        error_msg = str(e)
-        logger.exception(
-            "upload_failed | table=%s rows_attempted=%s | error=%s",
-            TABLE_NAME,
-            len(cleaned),
-            error_msg,
-        )
-        return False, error_msg
-
-
 
 _ALLOWED_COLUMNS = frozenset(
     {
@@ -74,6 +30,94 @@ _ALLOWED_COLUMNS = frozenset(
 )
 
 
-def _clean_log_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Keep only columns that exist in the ``session_logs`` table."""
-    return {k: v for k, v in entry.items() if k in _ALLOWED_COLUMNS}
+def verify_client_availability() -> Tuple[bool, Any, str]:
+    """Check if the Supabase client is properly configured and available.
+
+    Returns:
+        A tuple containing a boolean indicating availability, the client object
+        (if available), and an error message string (if not available).
+    """
+    client = get_supabase_client()
+    if client is None:
+        error_message = "Supabase client unavailable (check .env)."
+        logger.warning(
+            f"upload_skipped | reason=supabase_client_unavailable | hint={error_message}"
+        )
+        return False, None, error_message
+    return True, client, ""
+
+
+def sanitize_log_entries(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Clean log entries to ensure they match the database schema.
+
+    Args:
+        logs: The raw log entries to clean.
+
+    Returns:
+        A list of cleaned log entries containing only allowed columns.
+    """
+    cleaned_log_entries = []
+    # We must strip keys that do not exist in the Supabase table because PostgreSQL
+    # enforces strict schema validation. Sending extra keys (like an auto-generated 'id'
+    # or temporary 'input_preview' field) will cause the entire batch insert to fail.
+    for entry in logs:
+        cleaned_entry = {
+            key: value for key, value in entry.items() if key in _ALLOWED_COLUMNS
+        }
+        cleaned_log_entries.append(cleaned_entry)
+    return cleaned_log_entries
+
+
+def execute_batch_insert(
+    client: Any, cleaned_log_entries: List[Dict[str, Any]]
+) -> Tuple[bool, str]:
+    """Execute the batch insert operation against the Supabase database.
+
+    Args:
+        client: The Supabase client to use for the insert.
+        cleaned_log_entries: The sanitized list of log dictionaries.
+
+    Returns:
+        A tuple containing a boolean success flag and a status message.
+    """
+    try:
+        response = client.table(TABLE_NAME).insert(cleaned_log_entries).execute()
+        inserted_count = len(response.data) if response.data else 0
+        logger.info(
+            "upload_success | table=%s rows_inserted=%s",
+            TABLE_NAME,
+            inserted_count,
+        )
+        return True, f"Successfully inserted {inserted_count} rows."
+
+    except Exception as exception:
+        error_message = str(exception)
+        logger.exception(
+            "upload_failed | table=%s rows_attempted=%s | error_type=%s | error_message=%s",
+            TABLE_NAME,
+            len(cleaned_log_entries),
+            type(exception).__name__,
+            error_message,
+        )
+        return False, error_message
+
+
+def upload_session_logs(logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
+    """Insert a batch of simulation logs into the Supabase database.
+
+    Args:
+        logs: A list of dictionaries representing the conversation logs.
+
+    Returns:
+        A tuple containing a boolean success flag and a status or error message.
+    """
+    if not logs:
+        logger.info("upload_skipped | reason=empty_logs")
+        return True, "No logs to upload."
+
+    is_available, client, error_message = verify_client_availability()
+    if not is_available:
+        return False, error_message
+
+    cleaned_log_entries = sanitize_log_entries(logs)
+    return execute_batch_insert(client, cleaned_log_entries)
