@@ -3,8 +3,6 @@
 
 ParrotLM is a Python framework for simulating and analyzing multi-turn conversations between two LLM agents. It supports custom personas, OpenRouter model slugs, strict dialogue-only constraints, and automatically uploads structured interaction logs to a Supabase database.
 
-The codebase is built on **team-friendly principles**: simple over clever, readable over efficient, and optimized for the next developer. Every function has a single responsibility, explanatory naming, comprehensive docstrings, context-rich error handling, and full unit test coverage.
-
 ## Features
 - **Multi-turn conversation simulation**: Two agents automatically interact based on provided personas and an initial prompt.
 - **OpenRouter integration**: Access a wide variety of models using a single API via the OpenAI Python client.
@@ -14,13 +12,14 @@ The codebase is built on **team-friendly principles**: simple over clever, reada
 - **Clean Architecture**: Single-responsibility functions, explicit parameters, and 100% test coverage.
 
 ## Current Architecture
-- `main.py`: The main entrypoint. Initializes infrastructure, configures agents, executes the simulation, and uploads results.
-- `parrotlm/agent.py`: Single LLM agent managing model configuration, history windows, retries, and API calls.
-- `parrotlm/orchestrator.py`: Manages the simulation run, orchestrating the back-and-forth between two agents and generating structured logs.
-- `parrotlm/prompt_utils.py`: Constructs system prompts with strict constraints (dialogue only, zero narration).
-- `parrotlm/simulation_config.py`: Configuration loader (JSON for user parameters, environment for secrets).
-- `parrotlm/supabase_client.py` & `parrotlm/supabase_logger.py`: Supabase client singleton and batch log insertion logic.
-- `parrotlm/_logging.py` & `parrotlm/_validators.py`: Core utilities for structured logging and payload validation.
+The system is organized into explicit layers:
+- **Application Entrypoint**: `main.py`
+- **Configuration Layer**: `parrotlm/simulation_config.py` + `config/simulation.json` + `.env`
+- **Orchestration Layer**: `parrotlm/orchestrator.py` (`AgentConfig`, `Orchestrator`)
+- **Agent Layer**: `parrotlm/agent.py` (single LLM agent with retry logic)
+- **Infrastructure Layer**: `parrotlm/supabase_client.py` + `parrotlm/supabase_logger.py` + `parrotlm/_logging.py`
+- **Validation Layer**: `parrotlm/_validators.py` + `parrotlm/prompt_utils.py`
+- **Testing Layer**: `tests/` (9 test files, 100% coverage)
 
 ## Requirements
 - Python 3.10+
