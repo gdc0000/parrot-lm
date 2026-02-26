@@ -1,6 +1,6 @@
-import json
+﻿import json
 import pytest
-from parrotlm.simulation_config import SimulationConfig
+from parrotlm.configuration.simulation_config import SimulationConfig
 
 
 def test_load_returns_simulation_config_instance():
@@ -58,7 +58,7 @@ def test_load_uses_secrets_from_env(monkeypatch, tmp_path):
 
 
 def test_load_with_missing_json(caplog, monkeypatch):
-    monkeypatch.setattr("parrotlm.simulation_config.load_environment_variables", lambda: None)
+    monkeypatch.setattr("parrotlm.configuration.simulation_config.load_environment_variables", lambda: None)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
@@ -75,7 +75,7 @@ def test_load_with_missing_json(caplog, monkeypatch):
 
 
 def test_load_with_missing_env_returns_empty_secrets(monkeypatch, tmp_path):
-    monkeypatch.setattr("parrotlm.simulation_config.load_environment_variables", lambda: None)
+    monkeypatch.setattr("parrotlm.configuration.simulation_config.load_environment_variables", lambda: None)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
@@ -128,3 +128,4 @@ def test_load_raises_for_invalid_temperature_type(tmp_path):
 
     with pytest.raises(ValueError):
         SimulationConfig.load(json_path=str(config_file))
+

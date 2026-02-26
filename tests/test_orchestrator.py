@@ -1,12 +1,12 @@
-import os
+﻿import os
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import mock_open, patch
 
 import pytest
 
-from parrotlm.agent import Agent
-from parrotlm.orchestrator import AgentConfig, Orchestrator
+from parrotlm.agents.agent import Agent
+from parrotlm.orchestration.orchestrator import AgentConfig, Orchestrator
 
 
 def _agent_config(
@@ -85,7 +85,7 @@ class _EmptyContentOpenAIClient:
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_agent_generate_response_returns_expected_fields(_mock_openai):
     agent = Agent(
         model_slug="fake/model",
@@ -105,7 +105,7 @@ def test_agent_generate_response_returns_expected_fields(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
     agent_a_config = _agent_config(
         "fake/model-a", "Persona A", user_persona_snapshot="Persona A"
@@ -129,7 +129,7 @@ def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestrator_uses_distinct_history_windows_per_agent(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A", max_history_turns=3)
     agent_b_config = _agent_config("fake/model-b", "Persona B", max_history_turns=7)
@@ -146,7 +146,7 @@ def test_orchestrator_uses_distinct_history_windows_per_agent(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_orchestrator_rejects_non_dict_agent_params(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A", parameters=["invalid"])
     agent_b_config = _agent_config("fake/model-b", "Persona B")
@@ -161,7 +161,7 @@ def test_orchestrator_rejects_non_dict_agent_params(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_EmptyContentOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_EmptyContentOpenAIClient)
 def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
     agent = Agent(
         model_slug="fake/model",
@@ -182,7 +182,7 @@ def test_agent_generate_response_marks_empty_content_as_refusal(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_RecordingOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_RecordingOpenAIClient)
 def test_agent_context_window_never_starts_with_assistant_after_trimming(_mock_openai):
     agent = Agent(
         model_slug="fake/model",
@@ -205,7 +205,7 @@ def test_agent_context_window_never_starts_with_assistant_after_trimming(_mock_o
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A")
     agent_b_config = _agent_config("fake/model-b", "Persona B")
@@ -238,7 +238,7 @@ def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_wraps_agent_failure(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A")
     agent_b_config = _agent_config("fake/model-b", "Persona B")
@@ -262,7 +262,7 @@ def test_run_simulation_wraps_agent_failure(_mock_openai):
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
-@patch("parrotlm.agent.OpenAI", side_effect=_FakeOpenAIClient)
+@patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
 def test_run_simulation_wraps_invalid_agent_payload(_mock_openai):
     agent_a_config = _agent_config("fake/model-a", "Persona A")
     agent_b_config = _agent_config("fake/model-b", "Persona B")
@@ -286,3 +286,4 @@ def test_run_simulation_wraps_invalid_agent_payload(_mock_openai):
             list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
     assert "returned an invalid payload" in str(raised.value)
+

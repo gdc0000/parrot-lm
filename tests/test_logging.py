@@ -1,8 +1,8 @@
-import json
+﻿import json
 import logging
 from unittest.mock import patch
 
-from parrotlm._logging import (
+from parrotlm.infrastructure._logging import (
     parse_message_event,
     extract_record_attributes,
     is_retryable_exception,
@@ -73,3 +73,4 @@ def test_formatters():
     assert data["level"] == "INFO"
     assert data["event"] == "event"
     assert data["k"] == "v"
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 import uuid
@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from parrotlm._logging import log_structured
-from parrotlm._validators import (
+from parrotlm.infrastructure._logging import log_structured
+from parrotlm.validation._validators import (
     normalize_response_data,
     validate_generation_parameters,
     validate_non_empty_string,
     validate_positive_int,
 )
-from parrotlm.agent import Agent
+from parrotlm.agents.agent import Agent
 
 logger = logging.getLogger(__name__)
 
@@ -332,3 +332,4 @@ class Orchestrator:
         return self.assemble_log_record(
             turn_index, speaker, responder, system_prompt_snapshot, metrics
         )
+

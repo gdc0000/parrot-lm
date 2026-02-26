@@ -14,11 +14,11 @@ ParrotLM is a Python framework for simulating and analyzing multi-turn conversat
 ## Current Architecture
 The system is organized into explicit layers:
 - **Application Entrypoint**: `main.py`
-- **Configuration Layer**: `parrotlm/simulation_config.py` + `config/simulation.json` + `.env`
-- **Orchestration Layer**: `parrotlm/orchestrator.py` (`AgentConfig`, `Orchestrator`)
-- **Agent Layer**: `parrotlm/agent.py` (single LLM agent with retry logic)
-- **Infrastructure Layer**: `parrotlm/supabase_client.py` + `parrotlm/supabase_logger.py` + `parrotlm/_logging.py`
-- **Validation Layer**: `parrotlm/_validators.py` + `parrotlm/prompt_utils.py`
+- **Configuration Layer**: `parrotlm/configuration/simulation_config.py` + `config/simulation.json` + `.env`
+- **Orchestration Layer**: `parrotlm/orchestration/orchestrator.py` (`AgentConfig`, `Orchestrator`)
+- **Agent Layer**: `parrotlm/agents/agent.py` (single LLM agent with retry logic)
+- **Infrastructure Layer**: `parrotlm/infrastructure/supabase_client.py` + `parrotlm/infrastructure/supabase_logger.py` + `parrotlm/infrastructure/_logging.py`
+- **Validation Layer**: `parrotlm/validation/_validators.py` + `parrotlm/validation/prompt_utils.py`
 - **Testing Layer**: `tests/` (9 test files, 100% coverage)
 
 ## Requirements

@@ -1,4 +1,4 @@
-"""Single LLM agent: model configuration, history window, retries, and API calls."""
+﻿"""Single LLM agent: model configuration, history window, retries, and API calls."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from parrotlm._logging import is_retryable_exception, log_structured
-from parrotlm._validators import validate_non_empty_string, validate_positive_int
+from parrotlm.infrastructure._logging import is_retryable_exception, log_structured
+from parrotlm.validation._validators import validate_non_empty_string, validate_positive_int
 
 logger = logging.getLogger(__name__)
 
@@ -218,3 +218,4 @@ class Agent:
         self.update_conversation_history(metrics["content"])
 
         return metrics
+

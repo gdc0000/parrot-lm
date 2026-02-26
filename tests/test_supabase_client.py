@@ -1,9 +1,9 @@
-import pytest
+﻿import pytest
 import os
 import sys
 from unittest import mock
 
-from parrotlm.supabase_client import (
+from parrotlm.infrastructure.supabase_client import (
     get_supabase_client,
     reset_client,
     resolve_supabase_credentials,
@@ -65,3 +65,4 @@ def test_get_supabase_client_caches_client(monkeypatch):
     assert client2 == "dummy_client"
 
     sys.modules["supabase"].create_client.assert_called_once()
+

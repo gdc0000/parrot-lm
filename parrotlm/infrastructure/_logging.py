@@ -1,4 +1,4 @@
-"""Structured logging utilities for the orchestration pipeline."""
+﻿"""Structured logging utilities for the orchestration pipeline."""
 
 from __future__ import annotations
 
@@ -151,8 +151,10 @@ def apply_logging_configuration(level: int) -> None:
             "version": 1,
             "disable_existing_loggers": False,
             "formatters": {
-                "human": {"()": "parrotlm._logging.HumanReadableFormatter"},
-                "jsonl": {"()": "parrotlm._logging.JsonLineFormatter"},
+                "human": {
+                    "()": "parrotlm.infrastructure._logging.HumanReadableFormatter"
+                },
+                "jsonl": {"()": "parrotlm.infrastructure._logging.JsonLineFormatter"},
             },
             "handlers": {
                 "stdout": {
@@ -216,3 +218,4 @@ def is_retryable_exception(exception: BaseException) -> bool:
     # Type/Value errors usually indicate bad caller input and will not succeed
     # on retry, so we filter them out and do not attempt them again.
     return not isinstance(exception, (TypeError, ValueError))
+

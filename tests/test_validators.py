@@ -1,5 +1,5 @@
-import pytest
-from parrotlm._validators import (
+﻿import pytest
+from parrotlm.validation._validators import (
     validate_non_empty_string,
     validate_positive_int,
     validate_generation_parameters,
@@ -107,3 +107,4 @@ def test_normalize_response_data_happy_path():
 def test_normalize_response_data_failure():
     with pytest.raises(TypeError):
         normalize_response_data("not dict")
+

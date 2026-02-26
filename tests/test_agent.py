@@ -1,6 +1,6 @@
-from unittest import mock
+﻿from unittest import mock
 import pytest
-from parrotlm.agent import Agent
+from parrotlm.agents.agent import Agent
 
 
 def test_agent_init_happy_path():
@@ -14,7 +14,7 @@ def test_agent_init_failure():
         Agent("", "system", "name", "key", 10)
 
 
-@mock.patch("parrotlm.agent.time.time", side_effect=[100.0, 101.0])
+@mock.patch("parrotlm.agents.agent.time.time", side_effect=[100.0, 101.0])
 def test_generate_response_happy_path(mock_time):
     agent = Agent("model", "system", "name", "api_key", 10)
 
@@ -58,7 +58,7 @@ def test_extract_response_metrics_failure():
         agent.extract_response_metrics(mock_response, 100.0)
 
 
-@mock.patch("parrotlm.agent.time.sleep")  # To speed up tenacity
+@mock.patch("parrotlm.agents.agent.time.sleep")  # To speed up tenacity
 def test_generate_response_tenacity_exhaustion(mock_sleep):
     agent = Agent("model", "system", "name", "api_key", 10)
 
@@ -70,3 +70,4 @@ def test_generate_response_tenacity_exhaustion(mock_sleep):
         with pytest.raises(RuntimeError, match="Transient error"):
             # Should retry 3 times then fail
             agent.generate_response("hi")
+

@@ -1,12 +1,12 @@
-"""Tests for parrotlm.supabase_logger."""
+﻿"""Tests for parrotlm.infrastructure.supabase_logger."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from parrotlm import supabase_logger
-from parrotlm.supabase_client import reset_client
+from parrotlm.infrastructure import supabase_logger
+from parrotlm.infrastructure.supabase_client import reset_client
 
 
 def _sample_logs():
@@ -43,13 +43,13 @@ class TestUploadSessionLogs:
         assert result[0] is True
         assert isinstance(result[1], str)
 
-    @patch("parrotlm.supabase_logger.get_supabase_client", return_value=None)
+    @patch("parrotlm.infrastructure.supabase_logger.get_supabase_client", return_value=None)
     def test_returns_false_when_client_unavailable(self, _mock_client):
         result = supabase_logger.upload_session_logs(_sample_logs())
         assert result[0] is False
         assert isinstance(result[1], str)
 
-    @patch("parrotlm.supabase_logger.get_supabase_client")
+    @patch("parrotlm.infrastructure.supabase_logger.get_supabase_client")
     def test_returns_true_on_successful_insert(self, mock_get_client):
         mock_table = MagicMock()
         mock_table.insert.return_value.execute.return_value = SimpleNamespace(
@@ -68,7 +68,7 @@ class TestUploadSessionLogs:
         assert len(inserted_rows) == 1
         assert inserted_rows[0]["experiment_id"] == "exp-001"
 
-    @patch("parrotlm.supabase_logger.get_supabase_client")
+    @patch("parrotlm.infrastructure.supabase_logger.get_supabase_client")
     def test_returns_false_on_insert_exception(self, mock_get_client):
         mock_table = MagicMock()
         mock_table.insert.return_value.execute.side_effect = RuntimeError(
@@ -97,7 +97,7 @@ class TestSupabaseBufferedLogger:
     def setup_method(self):
         reset_client()
 
-    @patch("parrotlm.supabase_logger.get_supabase_client")
+    @patch("parrotlm.infrastructure.supabase_logger.get_supabase_client")
     def test_buffer_uploads_on_batch_size(self, mock_get_client):
         mock_table = MagicMock()
         mock_table.insert.return_value.execute.return_value = SimpleNamespace(
@@ -118,7 +118,7 @@ class TestSupabaseBufferedLogger:
         mock_table.insert.assert_called_once()
         assert len(logger.buffer) == 0
 
-    @patch("parrotlm.supabase_logger.get_supabase_client")
+    @patch("parrotlm.infrastructure.supabase_logger.get_supabase_client")
     def test_flush_uploads_remaining_logs(self, mock_get_client):
         mock_table = MagicMock()
         mock_table.insert.return_value.execute.return_value = SimpleNamespace(
@@ -136,3 +136,4 @@ class TestSupabaseBufferedLogger:
         logger.flush()
         mock_table.insert.assert_called_once()
         assert len(logger.buffer) == 0
+

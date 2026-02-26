@@ -1,11 +1,11 @@
-"""Upload simulation session logs to a Supabase ``session_logs`` table."""
+﻿"""Upload simulation session logs to a Supabase ``session_logs`` table."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Tuple
 
-from parrotlm.supabase_client import get_supabase_client
+from parrotlm.infrastructure.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
@@ -164,3 +164,4 @@ class SupabaseBufferedLogger:
         cleaned_entries = sanitize_log_entries(self.buffer)
         execute_batch_insert(self.client, cleaned_entries)
         self.buffer = []
+
