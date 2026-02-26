@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Tuple
 
-from parrotlm._logging import log_structured, setup_logging
-from parrotlm.orchestrator import AgentConfig, Orchestrator
-from parrotlm.prompt_utils import construct_system_prompt
-from parrotlm.simulation_config import SimulationConfig
-from parrotlm.supabase_client import get_supabase_client
-from parrotlm.supabase_logger import SupabaseBufferedLogger
+from parrotlm.infrastructure._logging import log_structured, setup_logging
+from parrotlm.orchestration.orchestrator import AgentConfig, Orchestrator
+from parrotlm.validation.prompt_utils import construct_system_prompt
+from parrotlm.configuration.simulation_config import SimulationConfig
+from parrotlm.infrastructure.supabase_client import get_supabase_client
+from parrotlm.infrastructure.supabase_logger import SupabaseBufferedLogger
 
 
 def initialize_infrastructure() -> SimulationConfig:
