@@ -4,15 +4,15 @@ This folder contains unit tests for the ParrotLM framework. The codebase maintai
 
 ## Structure
 
-- `test_agent.py`
-- `test_logging.py`
-- `test_main.py`
-- `test_orchestrator.py`
-- `test_prompt_utils.py`
-- `test_simulation_config.py`
-- `test_supabase_client.py`
-- `test_supabase_logger.py`
-- `test_validators.py`
+- `agents/test_agent.py`
+- `application/test_main.py`
+- `configuration/test_simulation_config.py`
+- `infrastructure/test_logging.py`
+- `infrastructure/test_supabase_client.py`
+- `infrastructure/test_supabase_logger.py`
+- `orchestration/test_orchestrator.py`
+- `validation/test_prompt_utils.py`
+- `validation/test_validators.py`
 
 ## Test Files
 
