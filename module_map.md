@@ -1,145 +1,59 @@
 # ParrotLM Module Map
 
 ## Overview
-ParrotLM is a Python framework for simulating multi-turn conversations between two LLM agents and logging the interaction telemetry to a Supabase database.
+ParrotLM is organized by concern areas under `parrotlm/`:
+- `agents`
+- `configuration`
+- `infrastructure`
+- `orchestration`
+- `validation`
 
-Current runtime flow:
-1. `main.py` serves as the entrypoint. It initializes infrastructure, configures agents, and kicks off the execution.
-2. `simulation_config.py` loads environment variables to set up the scenario.
-3. `orchestrator.py` manages the back-and-forth interaction between two `Agent` instances.
-4. Each `Agent` makes resilient calls to the OpenRouter API.
-5. `supabase_logger.py` batches the resulting interaction logs and safely uploads them to the `session_logs` table.
+The entrypoint `main.py` wires these concerns together.
 
-The codebase adheres strictly to team-friendly principles: simple over clever, readable over efficient, single-purpose functions, and 100% test coverage.
-
-## Repository Structure
+## Folder-by-Concern Map
 
 ### Entrypoint
-- `main.py`: Top-level execution pipeline (initialize, configure, execute, process).
+- `main.py`: Bootstraps configuration, starts orchestration, and coordinates logging/output flow.
 
-### Core Package (`parrotlm/`)
-- `agent.py`: Single LLM agent managing model config, history window, Tenacity retries, and API calls.
-- `orchestrator.py`: Orchestrates multi-turn conversations between two agents and generates structured logs.
-- `prompt_utils.py`: Constructs strict, dialogue-only system prompts from persona strings.
-- `simulation_config.py`: Environment-based configuration loader with support for `.env` and `simulation.json` overrides.
-- `supabase_client.py`: Supabase client singleton managing credential resolution and caching.
-- `supabase_logger.py`: Sanitizes and batch-inserts simulation logs into the Supabase database.
+### Agent
+- `parrotlm/agents/__init__.py`: Agent package exports.
+- `parrotlm/agents/agent.py`: LLM agent behavior (prompting, message history, model calls, retry behavior).
 
-### Utilities (`parrotlm/`)
-- `_logging.py`: Structured dual-logging utilities (formatted console output + JSONlines file logging).
-- `_validators.py`: Input validation helpers (type casting, required field verification).
+### Configuration
+- `parrotlm/configuration/__init__.py`: Configuration package exports.
+- `parrotlm/configuration/simulation_config.py`: Loads and validates runtime settings from env/JSON sources.
+- `config/simulation.json`: Default/static simulation settings.
 
-### Configuration (`config/`)
-- `simulation.json`: Static scenario configuration (personas, models, turn counts) used as a base or override.
+### Infrastructure
+- `parrotlm/infrastructure/__init__.py`: Infrastructure package exports.
+- `parrotlm/infrastructure/_logging.py`: Structured logging setup and helpers.
+- `parrotlm/infrastructure/supabase_client.py`: Supabase client construction/caching.
+- `parrotlm/infrastructure/supabase_logger.py`: Persists simulation/session logs to Supabase.
 
-### Logs (`logs/`)
-- `parrotlm.log`: Local persistent store for structured JSON interaction telemetry.
+### Orchestration
+- `parrotlm/orchestration/__init__.py`: Orchestration package exports.
+- `parrotlm/orchestration/orchestrator.py`: Multi-turn conversation loop and per-turn event coordination.
 
-### Tests (`tests/`)
-- `test_agent.py`
-- `test_logging.py`
-- `test_main.py`
-- `test_orchestrator.py`
-- `test_prompt_utils.py`
-- `test_simulation_config.py`
-- `test_supabase_client.py`
-- `test_supabase_logger.py`
-- `test_validators.py`
-- `README.md`: Test suite documentation.
+### Validation
+- `parrotlm/validation/__init__.py`: Validation package exports.
+- `parrotlm/validation/_validators.py`: Input/value validation and safe type parsing.
+- `parrotlm/validation/prompt_utils.py`: Persona/prompt construction rules and prompt-level constraints.
 
-## Module Details
+## Tests by Concern
+- `tests/agents/test_agent.py`
+- `tests/configuration/test_simulation_config.py`
+- `tests/infrastructure/test_logging.py`
+- `tests/infrastructure/test_supabase_client.py`
+- `tests/infrastructure/test_supabase_logger.py`
+- `tests/orchestration/test_orchestrator.py`
+- `tests/validation/test_prompt_utils.py`
+- `tests/validation/test_validators.py`
+- `tests/application/test_main.py`
+- `tests/README.md`
 
-### `main.py`
-Purpose:
-- Ties together the configuration, execution, and data upload phases of the simulation.
-- Safely catches and logs unhandled exceptions with their exact phase context.
-
-### `parrotlm/simulation_config.py`
-Purpose:
-- Loads environment variables (`MODEL_A`, `NUM_TURNS`, `OPENROUTER_API_KEY`, etc.).
-- Safely casts types and provides defaults if variables are missing.
-- Optionally loads a `.env` file for local development convenience.
-
-### `parrotlm/agent.py`
-Purpose:
-- Encapsulates a single LLM agent interacting with OpenRouter.
-- Keeps conversation history role-aligned and bounded by a context window.
-- Manages transient network errors using an exponential backoff retry decorator.
-
-### `parrotlm/orchestrator.py`
-Purpose:
-- Coordinates the conversational ping-pong between `Agent A` and `Agent B`.
-- Normalizes per-turn metadata into a structured log dictionary.
-- Checks for stop conditions (like model refusals) to safely halt the simulation.
-
-### `parrotlm/prompt_utils.py`
-Purpose:
-- Injects personas into a highly constrained system prompt.
-- Explicitly forbids narration, actions, brackets, and asterisks.
-
-### `parrotlm/supabase_client.py`
-Purpose:
-- Manages the lifecycle of the Supabase client object.
-- Caches the client at the module level to reuse HTTP connection pools across operations.
-
-### `parrotlm/supabase_logger.py`
-Purpose:
-- Verifies Supabase client availability.
-- Sanitizes generated logs to perfectly match the strict PostgreSQL schema.
-- Executes the batch insert into the `session_logs` table.
-
-### `parrotlm/_logging.py`
-Purpose:
-- Formats standard library logs into either human-readable console output or machine-readable JSONlines.
-- Provides `log_structured` for easy, context-rich telemetry.
-
-### `parrotlm/_validators.py`
-Purpose:
-- Safely casts and verifies standard inputs and API response payloads.
-- Stops bad data early before it reaches orchestration or database logic.
-
-### `config/simulation.json`
-Purpose:
-- Provides a portable way to define simulation parameters (personas, models).
-- Integrated into `SimulationConfig` as a middle-tier priority source.
-
-### `logs/parrotlm.log`
-Purpose:
-- Captures every log event (info, warning, error) as a discrete JSON object.
-- Serves as the primary source for local debugging and telemetry audit.
-
-## Dependency Graph
-```mermaid
-graph TD
-    main[main.py] --> cfg[parrotlm/simulation_config.py]
-    main --> orch[parrotlm/orchestrator.py]
-    main --> prompt[parrotlm/prompt_utils.py]
-    main --> supalog[parrotlm/supabase_logger.py]
-    main --> supacli[parrotlm/supabase_client.py]
-
-    cfg --> json[config/simulation.json]
-    cfg --> env[.env]
-
-    orch --> agent[parrotlm/agent.py]
-    orch --> val[parrotlm/_validators.py]
-    orch --> log[parrotlm/_logging.py]
-
-    log --> file[logs/parrotlm.log]
-    log --> stdlib[Python logging]
-
-    supalog --> supacli
-
-    agent --> val
-    agent --> log
-    agent --> openrouter[OpenRouter API]
-
-    supacli --> supabase[Supabase Database]
-```
-
-## Supporting Files
-- `README.md`: Project-level usage and setup.
-- `requirements.txt`: Python runtime dependencies.
-- `runtime.txt`: Specified Python version for compatibility.
-- `.env.example`: Environment variable template.
-- `.env`: Local environment secrets (not committed).
-- `LICENSE`: Apache 2.0 license.
+## High-Level Flow
+1. `main.py` loads runtime configuration.
+2. `orchestration/orchestrator.py` drives turn-by-turn interaction.
+3. `agents/agent.py` handles model interaction for each agent turn.
+4. `validation/*` enforces input and prompt correctness.
+5. `infrastructure/*` records telemetry and uploads logs.
