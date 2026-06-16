@@ -1,4 +1,4 @@
-python-dotenv>=1.0.0
+python-dotenv>=1.2.2
 tenacity>=8.0.0
 openai
 supabase>=2.0.0
