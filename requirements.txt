@@ -1,5 +1,5 @@
 python-dotenv>=1.0.0
 tenacity>=8.0.0
 openai
-supabase>=2.0.0
+supabase>=2.31.0
 pytest
