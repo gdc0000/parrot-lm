@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from parrotlm.validation.prompt_utils import (
     construct_system_prompt,
@@ -35,4 +35,3 @@ def test_format_persona_instructions():
     result = format_persona_instructions("rules", "persona")
     assert "rules" in result
     assert "persona" in result
-

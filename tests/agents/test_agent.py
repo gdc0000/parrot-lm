@@ -1,4 +1,4 @@
-﻿from unittest import mock
+from unittest import mock
 import pytest
 from parrotlm.agents.agent import Agent
 
@@ -70,4 +70,3 @@ def test_generate_response_tenacity_exhaustion(mock_sleep):
         with pytest.raises(RuntimeError, match="Transient error"):
             # Should retry 3 times then fail
             agent.generate_response("hi")
-

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Tuple
 
 from parrotlm.infrastructure._logging import log_structured, setup_logging
 from parrotlm.orchestration.orchestrator import AgentConfig, Orchestrator
 from parrotlm.validation.prompt_utils import construct_system_prompt
 from parrotlm.configuration.simulation_config import SimulationConfig
 from parrotlm.infrastructure.supabase_client import get_supabase_client
-from parrotlm.infrastructure.supabase_logger import SupabaseBufferedLogger
+from parrotlm.infrastructure.supabase_logger import (
+    SupabaseBufferedLogger,
+    flush_supabase_log_handlers,
+    install_supabase_log_handler,
+)
 
 
 def initialize_infrastructure() -> SimulationConfig:
@@ -19,8 +23,11 @@ def initialize_infrastructure() -> SimulationConfig:
     """
     setup_logging()
     configuration = SimulationConfig.load()
-    get_supabase_client(
+    supabase_client = get_supabase_client(
         url=configuration.supabase_url, key=configuration.supabase_anon_key
+    )
+    install_supabase_log_handler(
+        batch_size=configuration.batch_size, client=supabase_client
     )
     return configuration
 
@@ -93,7 +100,7 @@ def execute_simulation(
             )
 
     finally:
-        # Ensure any remaining logs in the buffer are uploaded even if the simulation stops early.
+        # Ensure remaining rows are uploaded even if the simulation stops early.
         buffered_logger.flush()
 
 
@@ -126,6 +133,8 @@ def main() -> None:
             exception_type=type(exception).__name__,
         )
         raise
+    finally:
+        flush_supabase_log_handlers()
 
 
 if __name__ == "__main__":

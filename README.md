@@ -6,7 +6,7 @@ ParrotLM is a Python framework for simulating and analyzing multi-turn conversat
 ## Features
 - **Multi-turn conversation simulation**: Two agents automatically interact based on provided personas and an initial prompt.
 - **OpenRouter integration**: Access a wide variety of models using a single API via the OpenAI Python client.
-- **Supabase Cloud Logging**: Automatically sanitizes and uploads generated simulation logs directly to a `session_logs` Supabase table.
+- **Supabase Cloud Logging**: Uploads generated conversation rows to `session_logs` and application events to `application_logs`.
 - **Robustness**: Built-in exponential backoff retries (via Tenacity) and robust validation/error handling.
 - **Structured JSON Logging**: All application events are logged as machine-readable JSONlines for easy debugging and observability.
 - **Clean Architecture**: Single-responsibility functions, explicit parameters, and 100% test coverage.
@@ -82,7 +82,46 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 python main.py
 ```
 
-Logs will be output to your console and `logs/parrotlm.log` locally, and the final conversation turns will be uploaded to your Supabase `session_logs` table.
+Logs will be output to your console and `logs/parrotlm.log` locally. Generated conversation turns are uploaded to your Supabase `session_logs` table, and application log events are uploaded to `application_logs`.
+
+### Supabase Tables
+
+Create these tables before running with Supabase enabled:
+
+```sql
+create table if not exists session_logs (
+  id bigint generated always as identity primary key,
+  experiment_id text not null,
+  turn_id integer not null,
+  scenario text,
+  speaker_model text,
+  responder_model text,
+  timestamp timestamptz,
+  latency_ms double precision,
+  input_tokens integer,
+  output_tokens integer,
+  content text,
+  finish_reason text,
+  is_refusal boolean,
+  system_prompt_snapshot text
+);
+
+create table if not exists application_logs (
+  id bigint generated always as identity primary key,
+  timestamp timestamptz not null,
+  level text not null,
+  logger_name text,
+  module text,
+  function_name text,
+  line_number integer,
+  event text,
+  message text,
+  context jsonb,
+  exception text,
+  process_id integer,
+  thread_name text
+);
+```
 
 ## Tests
 The codebase maintains 100% test coverage for both happy and failure paths. Run the unit test suite via `pytest`:

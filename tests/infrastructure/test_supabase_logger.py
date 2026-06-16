@@ -1,7 +1,8 @@
-﻿"""Tests for parrotlm.infrastructure.supabase_logger."""
+"""Tests for parrotlm.infrastructure.supabase_logger."""
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -43,7 +44,10 @@ class TestUploadSessionLogs:
         assert result[0] is True
         assert isinstance(result[1], str)
 
-    @patch("parrotlm.infrastructure.supabase_logger.get_supabase_client", return_value=None)
+    @patch(
+        "parrotlm.infrastructure.supabase_logger.get_supabase_client",
+        return_value=None,
+    )
     def test_returns_false_when_client_unavailable(self, _mock_client):
         result = supabase_logger.upload_session_logs(_sample_logs())
         assert result[0] is False
@@ -89,6 +93,101 @@ class TestUploadSessionLogs:
         assert "unknown_key" not in cleaned[0]
         assert cleaned[0]["experiment_id"] == "e1"
         assert cleaned[0]["turn_id"] == 0
+
+    def test_clean_application_log_entry_strips_unknown_keys(self):
+        entry = [{"event": "started", "unknown_key": "discard", "level": "INFO"}]
+        cleaned = supabase_logger.sanitize_application_log_entries(entry)
+        assert "unknown_key" not in cleaned[0]
+        assert cleaned[0]["event"] == "started"
+        assert cleaned[0]["level"] == "INFO"
+
+
+class TestSupabaseLogHandler:
+    """Unit tests for SupabaseLogHandler."""
+
+    def test_formats_log_record_for_supabase(self):
+        record = logging.LogRecord(
+            "parrotlm.test",
+            logging.INFO,
+            "path.py",
+            42,
+            'test_event | {"key": "value"}',
+            (),
+            None,
+        )
+
+        row = supabase_logger.format_log_record_for_supabase(record)
+
+        assert row["level"] == "INFO"
+        assert row["logger_name"] == "parrotlm.test"
+        assert row["event"] == "test_event"
+        assert row["context"]["key"] == "value"
+
+    def test_handler_uploads_when_batch_size_reached(self):
+        mock_table = MagicMock()
+        mock_table.insert.return_value.execute.return_value = SimpleNamespace(
+            data=[{"id": 1}, {"id": 2}]
+        )
+        mock_client = MagicMock()
+        mock_client.table.return_value = mock_table
+        handler = supabase_logger.SupabaseLogHandler(batch_size=2, client=mock_client)
+
+        record_1 = logging.LogRecord(
+            "parrotlm.test", logging.INFO, "path.py", 1, "event_one", (), None
+        )
+        record_2 = logging.LogRecord(
+            "parrotlm.test", logging.WARNING, "path.py", 2, "event_two", (), None
+        )
+
+        handler.handle(record_1)
+        mock_table.insert.assert_not_called()
+
+        handler.handle(record_2)
+
+        mock_client.table.assert_called_once_with("application_logs")
+        inserted_rows = mock_table.insert.call_args[0][0]
+        assert [row["event"] for row in inserted_rows] == ["event_one", "event_two"]
+        assert handler.buffer == []
+
+    def test_handler_ignores_supabase_infrastructure_logs(self):
+        mock_table = MagicMock()
+        mock_table.insert.return_value.execute.return_value = SimpleNamespace(data=[])
+        mock_client = MagicMock()
+        mock_client.table.return_value = mock_table
+        handler = supabase_logger.SupabaseLogHandler(batch_size=1, client=mock_client)
+        record = logging.LogRecord(
+            "parrotlm.infrastructure.supabase_client",
+            logging.INFO,
+            "path.py",
+            1,
+            "internal_event",
+            (),
+            None,
+        )
+
+        handler.handle(record)
+
+        mock_table.insert.assert_not_called()
+
+    def test_install_supabase_log_handler_adds_one_root_handler(self):
+        root_logger = logging.getLogger()
+        original_handlers = list(root_logger.handlers)
+        root_logger.handlers = []
+        mock_client = MagicMock()
+        try:
+            handler_1 = supabase_logger.install_supabase_log_handler(
+                batch_size=5, client=mock_client
+            )
+            handler_2 = supabase_logger.install_supabase_log_handler(
+                batch_size=5, client=mock_client
+            )
+
+            assert handler_1 is handler_2
+            assert len(root_logger.handlers) == 1
+        finally:
+            for handler in root_logger.handlers:
+                handler.close()
+            root_logger.handlers = original_handlers
 
 
 class TestSupabaseBufferedLogger:
@@ -136,4 +235,3 @@ class TestSupabaseBufferedLogger:
         logger.flush()
         mock_table.insert.assert_called_once()
         assert len(logger.buffer) == 0
-

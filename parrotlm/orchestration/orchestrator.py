@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from parrotlm.infrastructure._logging import log_structured
 from parrotlm.validation._validators import (
@@ -332,4 +332,3 @@ class Orchestrator:
         return self.assemble_log_record(
             turn_index, speaker, responder, system_prompt_snapshot, metrics
         )
-
