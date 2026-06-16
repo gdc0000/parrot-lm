@@ -1,14 +1,9 @@
-﻿import pytest
+import pytest
 from unittest.mock import patch
 
 from main import (
-    initialize_infrastructure,
-    configure_simulation_agents,
-    execute_simulation,
     main,
 )
-
-from parrotlm.configuration.simulation_config import SimulationConfig
 
 
 def test_main_happy_path():
@@ -39,4 +34,3 @@ def test_main_failure_logs_phase():
                 error="Config error",
                 exception_type="ValueError",
             )
-

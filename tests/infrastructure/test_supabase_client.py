@@ -1,5 +1,4 @@
-﻿import pytest
-import os
+import pytest
 import sys
 from unittest import mock
 
@@ -65,4 +64,3 @@ def test_get_supabase_client_caches_client(monkeypatch):
     assert client2 == "dummy_client"
 
     sys.modules["supabase"].create_client.assert_called_once()
-

@@ -1,15 +1,23 @@
-﻿"""Upload simulation session logs to a Supabase ``session_logs`` table."""
+"""Upload simulation data and application logs to Supabase tables."""
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict, List, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
+from parrotlm.infrastructure._logging import (
+    extract_record_attributes,
+    parse_message_event,
+)
 from parrotlm.infrastructure.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
-TABLE_NAME = "session_logs"
+SESSION_LOGS_TABLE_NAME = "session_logs"
+APPLICATION_LOGS_TABLE_NAME = "application_logs"
+TABLE_NAME = SESSION_LOGS_TABLE_NAME
 
 _ALLOWED_COLUMNS = frozenset(
     {
@@ -29,6 +37,23 @@ _ALLOWED_COLUMNS = frozenset(
     }
 )
 
+_ALLOWED_APPLICATION_LOG_COLUMNS = frozenset(
+    {
+        "timestamp",
+        "level",
+        "logger_name",
+        "module",
+        "function_name",
+        "line_number",
+        "event",
+        "message",
+        "context",
+        "exception",
+        "process_id",
+        "thread_name",
+    }
+)
+
 
 def verify_client_availability() -> Tuple[bool, Any, str]:
     """Check if the Supabase client is properly configured and available.
@@ -41,14 +66,15 @@ def verify_client_availability() -> Tuple[bool, Any, str]:
     if client is None:
         error_message = "Supabase client unavailable (check .env)."
         logger.warning(
-            f"upload_skipped | reason=supabase_client_unavailable | hint={error_message}"
+            "upload_skipped | reason=supabase_client_unavailable | hint=%s",
+            error_message,
         )
         return False, None, error_message
     return True, client, ""
 
 
 def sanitize_log_entries(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Clean log entries to ensure they match the database schema.
+    """Clean session log entries to ensure they match the database schema.
 
     Args:
         logs: The raw log entries to clean.
@@ -68,24 +94,39 @@ def sanitize_log_entries(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return cleaned_log_entries
 
 
-def execute_batch_insert(
-    client: Any, cleaned_log_entries: List[Dict[str, Any]]
+def sanitize_application_log_entries(
+    logs: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Clean application log entries to ensure they match the database schema."""
+    return [
+        {
+            key: value
+            for key, value in entry.items()
+            if key in _ALLOWED_APPLICATION_LOG_COLUMNS
+        }
+        for entry in logs
+    ]
+
+
+def execute_table_insert(
+    client: Any, table_name: str, rows: List[Dict[str, Any]]
 ) -> Tuple[bool, str]:
-    """Execute the batch insert operation against the Supabase database.
+    """Execute a batch insert operation against the Supabase database.
 
     Args:
         client: The Supabase client to use for the insert.
-        cleaned_log_entries: The sanitized list of log dictionaries.
+        table_name: The table to insert into.
+        rows: The sanitized list of row dictionaries.
 
     Returns:
         A tuple containing a boolean success flag and a status message.
     """
     try:
-        response = client.table(TABLE_NAME).insert(cleaned_log_entries).execute()
+        response = client.table(table_name).insert(rows).execute()
         inserted_count = len(response.data) if response.data else 0
         logger.info(
             "upload_success | table=%s rows_inserted=%s",
-            TABLE_NAME,
+            table_name,
             inserted_count,
         )
         return True, f"Successfully inserted {inserted_count} rows."
@@ -93,13 +134,21 @@ def execute_batch_insert(
     except Exception as exception:
         error_message = str(exception)
         logger.exception(
-            "upload_failed | table=%s rows_attempted=%s | error_type=%s | error_message=%s",
-            TABLE_NAME,
-            len(cleaned_log_entries),
+            "upload_failed | table=%s rows_attempted=%s | "
+            "error_type=%s | error_message=%s",
+            table_name,
+            len(rows),
             type(exception).__name__,
             error_message,
         )
         return False, error_message
+
+
+def execute_batch_insert(
+    client: Any, cleaned_log_entries: List[Dict[str, Any]]
+) -> Tuple[bool, str]:
+    """Execute the session log batch insert operation against Supabase."""
+    return execute_table_insert(client, SESSION_LOGS_TABLE_NAME, cleaned_log_entries)
 
 
 def upload_session_logs(logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
@@ -123,11 +172,129 @@ def upload_session_logs(logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
     return execute_batch_insert(client, cleaned_log_entries)
 
 
-class SupabaseBufferedLogger:
-    """A memory-efficient logger that uploads logs in batches.
+def make_json_safe(value: Any) -> Any:
+    """Return a JSON-compatible representation for Supabase JSONB columns."""
+    try:
+        return json.loads(json.dumps(value, sort_keys=True, default=str))
+    except (TypeError, ValueError):
+        return str(value)
 
-    This class provides a simple way to stream logs to Supabase without
-    keeping all of them in memory. It's designed for long-running
+
+def format_log_record_for_supabase(record: logging.LogRecord) -> Dict[str, Any]:
+    """Convert a standard library log record into an application log row."""
+    event, context = parse_message_event(record.getMessage())
+    extract_record_attributes(record, context)
+    safe_context = make_json_safe(context)
+
+    exception_text = None
+    if record.exc_info:
+        exception_text = logging.Formatter().formatException(record.exc_info)
+
+    return {
+        "timestamp": datetime.fromtimestamp(
+            record.created, tz=timezone.utc
+        ).isoformat(),
+        "level": record.levelname,
+        "logger_name": record.name,
+        "module": record.module,
+        "function_name": record.funcName,
+        "line_number": record.lineno,
+        "event": event,
+        "message": record.getMessage(),
+        "context": safe_context,
+        "exception": exception_text,
+        "process_id": record.process,
+        "thread_name": record.threadName,
+    }
+
+
+class SupabaseLogHandler(logging.Handler):
+    """Logging handler that buffers application log records into Supabase."""
+
+    def __init__(
+        self,
+        batch_size: int = 10,
+        client: Optional[Any] = None,
+        table_name: str = APPLICATION_LOGS_TABLE_NAME,
+    ) -> None:
+        """Initialize a Supabase-backed logging handler."""
+        super().__init__()
+        self.batch_size = max(1, batch_size)
+        self.client = client if client is not None else get_supabase_client()
+        self.table_name = table_name
+        self.buffer: List[Dict[str, Any]] = []
+        self._is_flushing = False
+
+    @property
+    def is_available(self) -> bool:
+        """Return whether the handler has a usable Supabase client."""
+        return self.client is not None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Buffer one log record and upload when the batch size is reached."""
+        if not self.is_available or self._is_flushing:
+            return
+        if record.name.startswith("parrotlm.infrastructure.supabase"):
+            return
+
+        try:
+            self.buffer.append(format_log_record_for_supabase(record))
+            if len(self.buffer) >= self.batch_size:
+                self.flush()
+        except Exception:
+            self.handleError(record)
+
+    def flush(self) -> None:
+        """Upload buffered application logs to Supabase."""
+        if not self.buffer or not self.is_available or self._is_flushing:
+            return
+
+        self._is_flushing = True
+        try:
+            rows = sanitize_application_log_entries(self.buffer)
+            execute_table_insert(self.client, self.table_name, rows)
+            self.buffer = []
+        finally:
+            self._is_flushing = False
+
+
+def install_supabase_log_handler(
+    batch_size: int = 10,
+    client: Optional[Any] = None,
+    level: int = logging.INFO,
+) -> Optional[SupabaseLogHandler]:
+    """Attach one Supabase application-log handler to the root logger."""
+    effective_client = client if client is not None else get_supabase_client()
+    if effective_client is None:
+        logger.warning(
+            "supabase_application_logging_skipped | reason=client_unavailable"
+        )
+        return None
+
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        if isinstance(handler, SupabaseLogHandler):
+            return handler
+
+    handler = SupabaseLogHandler(batch_size=batch_size, client=effective_client)
+    handler.setLevel(level)
+    root_logger.addHandler(handler)
+    logger.info("supabase_application_logging_enabled | table=%s", handler.table_name)
+    return handler
+
+
+def flush_supabase_log_handlers() -> None:
+    """Flush all installed Supabase application-log handlers."""
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, SupabaseLogHandler):
+            handler.flush()
+
+
+class SupabaseBufferedLogger:
+    """A memory-efficient logger that uploads generated session rows in batches.
+
+    This class provides a simple way to stream generated conversation data to
+    Supabase without keeping all of it in memory. It's designed for long-running
     simulations where memory safety is a priority.
     """
 
@@ -144,11 +311,7 @@ class SupabaseBufferedLogger:
         )
 
     def push(self, log_entry: Dict[str, Any]) -> None:
-        """Add a log entry to the buffer and upload if the batch size is reached.
-
-        Args:
-            log_entry: The structured log dictionary to record.
-        """
+        """Add a generated row to the buffer and upload at batch size."""
         if not self.is_available:
             return
 
@@ -157,11 +320,10 @@ class SupabaseBufferedLogger:
             self.flush()
 
     def flush(self) -> None:
-        """Upload all currently buffered logs to Supabase."""
+        """Upload all currently buffered generated rows to Supabase."""
         if not self.buffer or not self.is_available:
             return
 
         cleaned_entries = sanitize_log_entries(self.buffer)
         execute_batch_insert(self.client, cleaned_entries)
         self.buffer = []
-

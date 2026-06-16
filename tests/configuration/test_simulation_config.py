@@ -27,8 +27,16 @@ def test_load_from_json():
         config_file = temp_dir / "test_config.json"
         data = {
             "agents": {
-                "agent_a": {"model": "model-a", "persona": "persona-a", "temperature": 0.5},
-                "agent_b": {"model": "model-b", "persona": "persona-b", "temperature": 0.8},
+                "agent_a": {
+                    "model": "model-a",
+                    "persona": "persona-a",
+                    "temperature": 0.5,
+                },
+                "agent_b": {
+                    "model": "model-b",
+                    "persona": "persona-b",
+                    "temperature": 0.8,
+                },
             },
             "simulation": {
                 "num_turns": 5,
@@ -77,7 +85,10 @@ def test_load_uses_secrets_from_env(monkeypatch):
 
 
 def test_load_with_missing_json(caplog, monkeypatch):
-    monkeypatch.setattr("parrotlm.configuration.simulation_config.load_environment_variables", lambda: None)
+    monkeypatch.setattr(
+        "parrotlm.configuration.simulation_config.load_environment_variables",
+        lambda: None,
+    )
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
@@ -93,7 +104,10 @@ def test_load_with_missing_json(caplog, monkeypatch):
 
 
 def test_load_with_missing_env_returns_empty_secrets(monkeypatch):
-    monkeypatch.setattr("parrotlm.configuration.simulation_config.load_environment_variables", lambda: None)
+    monkeypatch.setattr(
+        "parrotlm.configuration.simulation_config.load_environment_variables",
+        lambda: None,
+    )
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)

@@ -1,4 +1,4 @@
-﻿"""Structured logging utilities for the orchestration pipeline."""
+"""Structured logging utilities for the orchestration pipeline."""
 
 from __future__ import annotations
 
@@ -218,4 +218,3 @@ def is_retryable_exception(exception: BaseException) -> bool:
     # Type/Value errors usually indicate bad caller input and will not succeed
     # on retry, so we filter them out and do not attempt them again.
     return not isinstance(exception, (TypeError, ValueError))
-

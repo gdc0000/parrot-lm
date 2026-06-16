@@ -1,13 +1,12 @@
-name: CI
+name: Scheduled Generation
 
 on:
-  push:
-    branches: ["**"]
-  pull_request:
-    branches: ["**"]
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
 
 jobs:
-  test:
+  generate:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,13 +23,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Lint
-        uses: astral-sh/ruff-action@v3
-
-      - name: Format check
-        uses: astral-sh/ruff-action@v3
-        with:
-          args: "format --check"
-
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Run pipeline
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: python main.py

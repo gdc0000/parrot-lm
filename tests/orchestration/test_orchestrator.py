@@ -1,7 +1,7 @@
-﻿import os
+import os
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import mock_open, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -286,4 +286,3 @@ def test_run_simulation_wraps_invalid_agent_payload(_mock_openai):
             list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
     assert "returned an invalid payload" in str(raised.value)
-

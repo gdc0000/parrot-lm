@@ -28,7 +28,7 @@ The entrypoint `main.py` wires these concerns together.
 - `parrotlm/infrastructure/__init__.py`: Infrastructure package exports.
 - `parrotlm/infrastructure/_logging.py`: Structured logging setup and helpers.
 - `parrotlm/infrastructure/supabase_client.py`: Supabase client construction/caching.
-- `parrotlm/infrastructure/supabase_logger.py`: Persists simulation/session logs to Supabase.
+- `parrotlm/infrastructure/supabase_logger.py`: Persists generated session rows and application log events to Supabase.
 
 ### Orchestration
 - `parrotlm/orchestration/__init__.py`: Orchestration package exports.
