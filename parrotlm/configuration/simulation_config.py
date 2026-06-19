@@ -54,6 +54,51 @@ def load_json_config(file_path: str) -> Dict[str, Any]:
         return {}
 
 
+REQUIRED_SECRETS = {
+    "OPENROUTER_API_KEY": {"help": "Your OpenRouter API key. Get one at https://openrouter.ai/keys"},
+}
+
+OPTIONAL_SECRETS = {
+    "SUPABASE_URL": {"help": "Supabase project URL (optional — cloud logging disabled if missing)"},
+    "SUPABASE_ANON_KEY": {"help": "Supabase anonymous key (optional — cloud logging disabled if missing)"},
+}
+
+
+def validate_secrets() -> None:
+    """Verify that required environment secrets are present and log availability.
+
+    Missing required secrets cause an immediate failure with a clear message.
+    Missing optional secrets only produce a warning so the simulation can still
+    run in local or degraded mode.
+
+    Raises:
+        ValueError: If any required secret is missing or empty.
+    """
+    for name, meta in REQUIRED_SECRETS.items():
+        value = os.getenv(name, "")
+        if not value.strip():
+            logger.critical(
+                "missing_required_secret | secret=%s | hint=%s",
+                name,
+                meta["help"],
+            )
+            raise ValueError(
+                f"Required secret '{name}' is not set. {meta['help']}"
+            )
+        logger.info("secret_present | secret=%s", name)
+
+    for name, meta in OPTIONAL_SECRETS.items():
+        value = os.getenv(name, "")
+        if not value.strip():
+            logger.warning(
+                "missing_optional_secret | secret=%s | hint=%s",
+                name,
+                meta["help"],
+            )
+        else:
+            logger.info("secret_present | secret=%s", name)
+
+
 @dataclass(frozen=True)
 class SimulationConfig:
     """Holds configuration parameters for a complete simulation run."""
@@ -86,8 +131,12 @@ class SimulationConfig:
 
         Returns:
             A populated SimulationConfig instance.
+
+        Raises:
+            ValueError: If a required environment secret is missing or empty.
         """
         load_environment_variables()
+        validate_secrets()
         config_data = load_json_config(json_path)
 
         # Extraction from JSON with defaults

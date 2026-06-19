@@ -4,8 +4,15 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import logging
 
-from parrotlm.configuration.simulation_config import SimulationConfig
+from parrotlm.configuration.simulation_config import (
+    SimulationConfig,
+    validate_secrets,
+)
+
+
+_NO_ENV = "parrotlm.configuration.simulation_config.load_environment_variables"
 
 
 def _make_local_temp_dir() -> Path:
@@ -16,7 +23,57 @@ def _make_local_temp_dir() -> Path:
     return temp_dir
 
 
+# ────────────────────────────────────────────────────────────────────────
+# validate_secrets  tests
+# ────────────────────────────────────────────────────────────────────────
+
+
+def test_validate_secrets_required_missing_raises(monkeypatch, caplog):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="Required secret 'OPENROUTER_API_KEY' is not set"):
+        validate_secrets()
+
+    assert "missing_required_secret" in caplog.text
+    assert "OPENROUTER_API_KEY" in caplog.text
+
+
+def test_validate_secrets_required_present_warns_optional_missing(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+
+    validate_secrets()  # Must NOT raise
+
+    assert "secret_present | secret=OPENROUTER_API_KEY" in caplog.text
+    assert "missing_optional_secret | secret=SUPABASE_URL" in caplog.text
+    assert "missing_optional_secret | secret=SUPABASE_ANON_KEY" in caplog.text
+
+
+def test_validate_secrets_all_present(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-key")
+
+    validate_secrets()
+
+    assert "secret_present | secret=OPENROUTER_API_KEY" in caplog.text
+    assert "secret_present | secret=SUPABASE_URL" in caplog.text
+    assert "secret_present | secret=SUPABASE_ANON_KEY" in caplog.text
+    assert "missing_" not in caplog.text
+
+
+# ────────────────────────────────────────────────────────────────────────
+# SimulationConfig.load  tests
+# ────────────────────────────────────────────────────────────────────────
+
+
 def test_load_returns_simulation_config_instance():
+    """Relies on .env being present in local dev / CI secrets."""
     config = SimulationConfig.load()
     assert isinstance(config, SimulationConfig)
 
@@ -64,9 +121,7 @@ def test_load_from_json():
 
 
 def test_load_uses_secrets_from_env(monkeypatch):
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.delenv("SUPABASE_URL", raising=False)
-    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    monkeypatch.setattr(_NO_ENV, lambda: None)
     monkeypatch.setenv("OPENROUTER_API_KEY", "secret-key")
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-key")
@@ -84,31 +139,44 @@ def test_load_uses_secrets_from_env(monkeypatch):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_load_with_missing_json(caplog, monkeypatch):
-    monkeypatch.setattr(
-        "parrotlm.configuration.simulation_config.load_environment_variables",
-        lambda: None,
-    )
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.delenv("SUPABASE_URL", raising=False)
-    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+def test_load_with_missing_json_uses_defaults(monkeypatch, caplog):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
 
     config = SimulationConfig.load(json_path="non_existent.json")
     assert config.model_a == "google/gemma-3n-e4b-it"
     assert config.model_b == "google/gemma-3n-e4b-it"
     assert config.context_window == 5
-    assert config.openrouter_api_key == ""
-    assert config.supabase_url == ""
-    assert config.supabase_anon_key == ""
     assert "Configuration file 'non_existent.json' not found" in caplog.text
 
 
-def test_load_with_missing_env_returns_empty_secrets(monkeypatch):
-    monkeypatch.setattr(
-        "parrotlm.configuration.simulation_config.load_environment_variables",
-        lambda: None,
-    )
+def test_load_fails_fast_when_api_key_missing(monkeypatch, caplog):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="Required secret 'OPENROUTER_API_KEY' is not set"):
+        SimulationConfig.load()
+
+    assert "missing_required_secret" in caplog.text
+
+
+def test_load_succeeds_with_only_required_secret(monkeypatch):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+
+    config = SimulationConfig.load()
+    assert config.openrouter_api_key == "sk-test-key"
+    assert config.supabase_url == ""
+    assert config.supabase_anon_key == ""
+
+
+def test_load_with_missing_optional_env_uses_empty_defaults(monkeypatch):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
 
@@ -119,14 +187,17 @@ def test_load_with_missing_env_returns_empty_secrets(monkeypatch):
 
         config = SimulationConfig.load(json_path=str(config_file))
 
-        assert config.openrouter_api_key == ""
+        assert config.openrouter_api_key == "sk-test-key"
         assert config.supabase_url == ""
         assert config.supabase_anon_key == ""
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_load_with_malformed_json_returns_defaults(caplog):
+def test_load_with_malformed_json_returns_defaults(monkeypatch, caplog):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+
     temp_dir = _make_local_temp_dir()
     try:
         config_file = temp_dir / "malformed.json"
@@ -142,7 +213,10 @@ def test_load_with_malformed_json_returns_defaults(caplog):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_load_with_partial_json_uses_defaults_for_missing_sections():
+def test_load_with_partial_json_uses_defaults_for_missing_sections(monkeypatch):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+
     temp_dir = _make_local_temp_dir()
     try:
         config_file = temp_dir / "partial.json"
@@ -165,7 +239,10 @@ def test_load_with_partial_json_uses_defaults_for_missing_sections():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_load_raises_for_invalid_temperature_type():
+def test_load_raises_for_invalid_temperature_type(monkeypatch):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+
     temp_dir = _make_local_temp_dir()
     try:
         config_file = temp_dir / "invalid_types.json"
