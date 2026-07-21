@@ -33,9 +33,7 @@ with st.sidebar:
 
     st.subheader("Agent B")
     model_b = st.text_input("Model", value="google/gemma-3n-e4b-it", key="model_b")
-    persona_b = st.text_area(
-        "Persona", value="Financial Analyst", key="persona_b"
-    )
+    persona_b = st.text_area("Persona", value="Financial Analyst", key="persona_b")
     temp_b = st.slider("Temperature", 0.0, 2.0, 1.0, 0.1, key="temperature_b")
 
     st.divider()

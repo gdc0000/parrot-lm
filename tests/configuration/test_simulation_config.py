@@ -33,7 +33,9 @@ def test_validate_secrets_required_missing_raises(monkeypatch, caplog):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
 
-    with pytest.raises(ValueError, match="Required secret 'OPENROUTER_API_KEY' is not set"):
+    with pytest.raises(
+        ValueError, match="Required secret 'OPENROUTER_API_KEY' is not set"
+    ):
         validate_secrets()
 
     assert "missing_required_secret" in caplog.text
@@ -156,7 +158,9 @@ def test_load_fails_fast_when_api_key_missing(monkeypatch, caplog):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
 
-    with pytest.raises(ValueError, match="Required secret 'OPENROUTER_API_KEY' is not set"):
+    with pytest.raises(
+        ValueError, match="Required secret 'OPENROUTER_API_KEY' is not set"
+    ):
         SimulationConfig.load()
 
     assert "missing_required_secret" in caplog.text

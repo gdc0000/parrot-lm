@@ -55,12 +55,18 @@ def load_json_config(file_path: str) -> Dict[str, Any]:
 
 
 REQUIRED_SECRETS = {
-    "OPENROUTER_API_KEY": {"help": "Your OpenRouter API key. Get one at https://openrouter.ai/keys"},
+    "OPENROUTER_API_KEY": {
+        "help": "Your OpenRouter API key. Get one at https://openrouter.ai/keys"
+    },
 }
 
 OPTIONAL_SECRETS = {
-    "SUPABASE_URL": {"help": "Supabase project URL (optional — cloud logging disabled if missing)"},
-    "SUPABASE_ANON_KEY": {"help": "Supabase anonymous key (optional — cloud logging disabled if missing)"},
+    "SUPABASE_URL": {
+        "help": "Supabase project URL (optional — cloud logging disabled if missing)"
+    },
+    "SUPABASE_ANON_KEY": {
+        "help": "Supabase anonymous key (optional — cloud logging disabled if missing)"
+    },
 }
 
 
@@ -82,9 +88,7 @@ def validate_secrets() -> None:
                 name,
                 meta["help"],
             )
-            raise ValueError(
-                f"Required secret '{name}' is not set. {meta['help']}"
-            )
+            raise ValueError(f"Required secret '{name}' is not set. {meta['help']}")
         logger.info("secret_present | secret=%s", name)
 
     for name, meta in OPTIONAL_SECRETS.items():
