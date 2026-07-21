@@ -4,7 +4,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Callable, Dict, Generator, Optional, Tuple
 
 from parrotlm.infrastructure._logging import log_structured
 from parrotlm.validation._validators import (
@@ -139,6 +139,7 @@ class Orchestrator:
         self,
         num_turns: int,
         initial_message: str = "Hello.",
+        cancellation_requested: Optional[Callable[[], bool]] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """Run a multi-turn conversation and yield log entries as they are created.
 
@@ -159,18 +160,27 @@ class Orchestrator:
         self.log_simulation_start(num_turns)
 
         total_logs = 0
-        for log_entry in self.process_conversation_turns(num_turns, last_message):
+        for log_entry in self.process_conversation_turns(
+            num_turns, last_message, cancellation_requested
+        ):
             yield log_entry
             total_logs += 1
 
         self.log_simulation_completion(total_logs)
 
     def process_conversation_turns(
-        self, num_turns: int, initial_message: str
+        self,
+        num_turns: int,
+        initial_message: str,
+        cancellation_requested: Optional[Callable[[], bool]] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """Iterate through the specified number of turns, managing handoffs between agents."""
         last_message = initial_message
         for turn_index in range(num_turns):
+            if cancellation_requested and cancellation_requested():
+                logger.info("Simulation cancelled before turn %s.", turn_index)
+                break
+
             log_entry_a, last_message, should_stop = self._run_single_agent_turn(
                 turn_index=turn_index,
                 speaker=self.agent_a,
@@ -180,7 +190,7 @@ class Orchestrator:
                 generation_parameters=self.agent_a_parameters,
             )
             yield log_entry_a
-            if should_stop:
+            if should_stop or (cancellation_requested and cancellation_requested()):
                 break
 
             log_entry_b, last_message, should_stop = self._run_single_agent_turn(
