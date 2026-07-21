@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import logging
+
 import streamlit as st
+from parrotlm.infrastructure._logging import setup_logging
+from parrotlm.infrastructure.supabase_client import get_supabase_client
+from parrotlm.infrastructure.supabase_logger import (
+    SupabaseBufferedLogger,
+    flush_supabase_log_handlers,
+    install_supabase_log_handler,
+)
 from parrotlm.orchestration.orchestrator import AgentConfig, Orchestrator
 from parrotlm.validation.prompt_utils import construct_system_prompt
 
+# Load .env so SUPABASE_URL / SUPABASE_ANON_KEY default-fill the sidebar.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
+import os  # noqa: E402  (imported after dotenv block for ordering clarity)
+
+# Configure stdout + rotating JSONL file handlers once per process.
+setup_logging()
+
 AGENT_COLORS = {"A": "#4A90D9", "B": "#D94A7B"}
+# Streamlit's `st.chat_message(avatar=...)` only accepts "user", "assistant",
+# a single emoji, an image path, or a URL. A bare letter like "A" is treated as
+# a file path and raises "Error opening 'A'" — so use emoji avatars instead.
+AGENT_AVATARS = {"A": "🅰️", "B": "🅱️"}
 
 st.set_page_config(page_title="ParrotLM", page_icon="🦜", layout="wide")
 st.title("🦜 ParrotLM")
@@ -21,6 +47,25 @@ with st.sidebar:
         help="Get one at https://openrouter.ai/keys",
         key="openrouter_api_key",
     )
+
+    with st.expander("Supabase (optional cloud logging)", expanded=False):
+        supabase_url = st.text_input(
+            "Supabase URL",
+            value=os.getenv("SUPABASE_URL", ""),
+            help="Your Supabase project URL. Leave blank to disable cloud logging.",
+            key="supabase_url",
+        )
+        supabase_key = st.text_input(
+            "Supabase Anon Key",
+            value=os.getenv("SUPABASE_ANON_KEY", ""),
+            type="password",
+            help="Your Supabase anon/publishable key.",
+            key="supabase_anon_key",
+        )
+        if supabase_url.strip() and supabase_key.strip():
+            st.caption("🟢 Cloud logging enabled — session + application logs will be uploaded.")
+        else:
+            st.caption("⚪ Cloud logging disabled (no URL/key). Simulation still runs locally.")
 
     st.divider()
 
@@ -121,7 +166,39 @@ with col_b:
 st.divider()
 
 # --- Run Simulation ---
-if st.button("▶ Run Simulation", type="primary", use_container_width=True):
+run_clicked = st.button(
+    "▶ Run Simulation", type="primary", use_container_width=True
+)
+
+# Clear previous results whenever config changes or a new run starts.
+if "last_run_signature" not in st.session_state:
+    st.session_state["last_run_signature"] = None
+
+signature = (
+    model_a, model_b, persona_a, persona_b, temp_a, temp_b,
+    num_turns, initial_message, max_tokens, context_window,
+)
+if st.session_state["last_run_signature"] != signature:
+    st.session_state.pop("conversation_log", None)
+    st.session_state["last_run_signature"] = signature
+
+# Re-render any previously completed conversation so it survives reruns.
+if "conversation_log" in st.session_state:
+    for _entry in st.session_state["conversation_log"]:
+        with st.chat_message("assistant", avatar=AGENT_AVATARS[_entry["slot"]]):
+            st.markdown(f"**Agent {_entry['slot']}** · `{_entry['model']}`")
+            st.markdown(_entry["content"])
+            with st.status("Metrics", expanded=False):
+                st.markdown(
+                    f"**Turn** {_entry['turn']}/{_entry['num_turns']}  \n"
+                    f"**Latency** {_entry['latency']:.0f}ms  \n"
+                    f"**Tokens** {_entry['in_tokens']} in → {_entry['out_tokens']} out"
+                )
+    if "summary" in st.session_state:
+        st.divider()
+        st.success(st.session_state["summary"])
+
+if run_clicked:
     agent_a_config = AgentConfig(
         model=model_a,
         system_prompt=construct_system_prompt(persona_a),
@@ -144,6 +221,18 @@ if st.button("▶ Run Simulation", type="primary", use_container_width=True):
         openrouter_api_key=openrouter_key,
     )
 
+    # --- Supabase wiring (mirrors main.py) ---
+    # The session client uploads each conversation turn to the `session_logs`
+    # table; the application-log handler streams structured logs to
+    # `application_logs`. Both are no-ops when Supabase credentials are absent.
+    supabase_client = get_supabase_client(
+        url=supabase_url.strip() or None,
+        key=supabase_key.strip() or None,
+    )
+    install_supabase_log_handler(batch_size=10, client=supabase_client)
+    session_logger = SupabaseBufferedLogger(batch_size=10)
+    cloud_enabled = session_logger.is_available
+
     # Show the initial message
     with st.chat_message("user"):
         st.markdown(initial_message)
@@ -152,6 +241,14 @@ if st.button("▶ Run Simulation", type="primary", use_container_width=True):
     total_output_tokens = 0
     total_latency_ms = 0.0
     turn_count = 0
+    conversation_log: list[dict] = []
+    session_rows_pushed = 0
+
+    status = st.status("Running simulation…", expanded=True)
+    status.update(
+        label=f"▶ Running simulation ({num_turns} turns, 2 calls each ≈ "
+              f"{num_turns * 2 * 6}s)",
+    )
 
     try:
         for log_entry in orchestrator.run_simulation(
@@ -171,7 +268,12 @@ if st.button("▶ Run Simulation", type="primary", use_container_width=True):
             total_latency_ms += latency
             turn_count += 1
 
-            with st.chat_message("assistant", avatar=slot):
+            status.update(
+                label=f"▶ Running… turn {turn}/{num_turns} "
+                      f"({turn_count} of {num_turns * 2} messages)",
+            )
+
+            with st.chat_message("assistant", avatar=AGENT_AVATARS[slot]):
                 st.markdown(f"**Agent {slot}** · `{model}`")
                 st.markdown(content)
                 with st.status("Metrics", expanded=False):
@@ -181,7 +283,20 @@ if st.button("▶ Run Simulation", type="primary", use_container_width=True):
                         f"**Tokens** {in_tokens} in → {out_tokens} out"
                     )
 
+            conversation_log.append({
+                "slot": slot, "model": model, "content": content,
+                "turn": turn, "num_turns": num_turns,
+                "latency": latency, "in_tokens": in_tokens,
+                "out_tokens": out_tokens,
+            })
+
+            # Stream this turn to Supabase's session_logs table.
+            session_logger.push(log_entry)
+            if session_logger.is_available:
+                session_rows_pushed += 1
+
     except Exception as error:
+        status.update(label="Simulation failed", state="error")
         root_cause = error.__cause__ or error
         details = str(root_cause).replace(openrouter_key, "[redacted]")
         st.error(
@@ -191,12 +306,30 @@ if st.button("▶ Run Simulation", type="primary", use_container_width=True):
             "and the account has sufficient credits."
         )
         st.stop()
+    finally:
+        # Flush any buffered session rows + application logs even on early stop.
+        session_logger.flush()
+        flush_supabase_log_handlers()
 
     # --- Summary ---
     avg_latency = total_latency_ms / turn_count if turn_count else 0
     st.divider()
-    st.success(
+    summary = (
         f"**Simulation complete** — {turn_count} messages  \n"
         f"Total tokens: {total_input_tokens} in → {total_output_tokens} out  ·  "
         f"Avg latency: {avg_latency:.0f}ms"
     )
+    if cloud_enabled:
+        summary += (
+            f"  \n☁️ Uploaded {session_rows_pushed} session rows + "
+            f"application logs to Supabase."
+        )
+    else:
+        summary += "  \n⚪ Cloud logging skipped (no Supabase credentials)."
+    status.update(label="✅ Simulation complete", state="complete")
+    st.success(summary)
+
+    # Persist so the conversation survives Streamlit reruns triggered by
+    # interacting with collapsed status widgets.
+    st.session_state["conversation_log"] = conversation_log
+    st.session_state["summary"] = summary
