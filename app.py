@@ -4,6 +4,8 @@ import streamlit as st
 from parrotlm.orchestration.orchestrator import AgentConfig, Orchestrator
 from parrotlm.validation.prompt_utils import construct_system_prompt
 
+AGENT_COLORS = {"A": "#4A90D9", "B": "#D94A7B"}
+
 st.set_page_config(page_title="ParrotLM", page_icon="🦜", layout="wide")
 st.title("🦜 ParrotLM")
 st.caption("Two-Agent Conversation Simulator")
@@ -71,6 +73,54 @@ if not openrouter_key:
     st.info("Enter your OpenRouter API key in the sidebar to get started.")
     st.stop()
 
+# --- Agent Identity Header ---
+col_a, col_b = st.columns(2)
+with col_a:
+    st.markdown(
+        f"""
+        <div style="
+            border-left: 4px solid {AGENT_COLORS['A']};
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            background: rgba(74, 144, 217, 0.08);
+            margin-bottom: 8px;
+        ">
+            <div style="font-weight: 700; font-size: 1.05em; margin-bottom: 4px;">
+                Agent A
+            </div>
+            <div style="font-size: 0.85em; opacity: 0.8;">
+                {model_a}<br/>
+                <em>{persona_a}</em> · temp {temp_a}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with col_b:
+    st.markdown(
+        f"""
+        <div style="
+            border-left: 4px solid {AGENT_COLORS['B']};
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            background: rgba(217, 74, 123, 0.08);
+            margin-bottom: 8px;
+        ">
+            <div style="font-weight: 700; font-size: 1.05em; margin-bottom: 4px;">
+                Agent B
+            </div>
+            <div style="font-size: 0.85em; opacity: 0.8;">
+                {model_b}<br/>
+                <em>{persona_b}</em> · temp {temp_b}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.divider()
+
+# --- Run Simulation ---
 if st.button("▶ Run Simulation", type="primary", use_container_width=True):
     agent_a_config = AgentConfig(
         model=model_a,
@@ -94,7 +144,16 @@ if st.button("▶ Run Simulation", type="primary", use_container_width=True):
         openrouter_api_key=openrouter_key,
     )
 
-    def raw_simulation_stream():
+    # Show the initial message
+    with st.chat_message("user"):
+        st.markdown(initial_message)
+
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_latency_ms = 0.0
+    turn_count = 0
+
+    try:
         for log_entry in orchestrator.run_simulation(
             num_turns=num_turns,
             initial_message=initial_message,
@@ -105,29 +164,39 @@ if st.button("▶ Run Simulation", type="primary", use_container_width=True):
             in_tokens = log_entry["input_tokens"]
             out_tokens = log_entry["output_tokens"]
             turn = log_entry["turn_id"] + 1
+            model = log_entry["speaker_model"]
 
-            yield (
-                f"**Agent {slot}** — {log_entry['speaker_model']}\n\n"
-                f"{content}\n\n"
-                f"*Turn {turn}/{num_turns} · "
-                f"latency {latency}ms · "
-                f"tokens {in_tokens}→{out_tokens}*\n\n"
-                f"---\n\n"
-            )
+            total_input_tokens += in_tokens
+            total_output_tokens += out_tokens
+            total_latency_ms += latency
+            turn_count += 1
 
-        yield "**Simulation complete.**"
+            with st.chat_message("assistant", avatar=slot):
+                st.markdown(f"**Agent {slot}** · `{model}`")
+                st.markdown(content)
+                with st.status("Metrics", expanded=False):
+                    st.markdown(
+                        f"**Turn** {turn}/{num_turns}  \n"
+                        f"**Latency** {latency:.0f}ms  \n"
+                        f"**Tokens** {in_tokens} in → {out_tokens} out"
+                    )
 
-    def simulation_stream():
-        try:
-            yield from raw_simulation_stream()
-        except Exception as error:
-            root_cause = error.__cause__ or error
-            details = str(root_cause).replace(openrouter_key, "[redacted]")
-            yield (
-                "**Simulation stopped.**\n\n"
-                f"OpenRouter returned: `{details}`\n\n"
-                "Check that the key is valid, the selected model is available, "
-                "and the account has sufficient credits."
-            )
+    except Exception as error:
+        root_cause = error.__cause__ or error
+        details = str(root_cause).replace(openrouter_key, "[redacted]")
+        st.error(
+            f"**Simulation stopped.**\n\n"
+            f"OpenRouter returned: `{details}`\n\n"
+            "Check that the key is valid, the selected model is available, "
+            "and the account has sufficient credits."
+        )
+        st.stop()
 
-    st.write_stream(simulation_stream)
+    # --- Summary ---
+    avg_latency = total_latency_ms / turn_count if turn_count else 0
+    st.divider()
+    st.success(
+        f"**Simulation complete** — {turn_count} messages  \n"
+        f"Total tokens: {total_input_tokens} in → {total_output_tokens} out  ·  "
+        f"Avg latency: {avg_latency:.0f}ms"
+    )
