@@ -74,13 +74,17 @@ def test_validate_secrets_all_present(monkeypatch, caplog):
 # ────────────────────────────────────────────────────────────────────────
 
 
-def test_load_returns_simulation_config_instance():
-    """Relies on .env being present in local dev / CI secrets."""
+def test_load_returns_simulation_config_instance(monkeypatch):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
     config = SimulationConfig.load()
     assert isinstance(config, SimulationConfig)
 
 
-def test_load_from_json():
+def test_load_from_json(monkeypatch):
+    monkeypatch.setattr(_NO_ENV, lambda: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+
     temp_dir = _make_local_temp_dir()
     try:
         config_file = temp_dir / "test_config.json"
