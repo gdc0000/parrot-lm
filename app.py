@@ -96,9 +96,10 @@ with st.sidebar:
         key="openrouter_api_key",
     )
 
-    if os.getenv("SUPABASE_URL", "").strip() and os.getenv(
-        "SUPABASE_ANON_KEY", ""
-    ).strip():
+    if (
+        os.getenv("SUPABASE_URL", "").strip()
+        and os.getenv("SUPABASE_ANON_KEY", "").strip()
+    ):
         st.caption("☁️ Cloud logging active (Supabase)")
     else:
         st.caption("⚪ Cloud logging off")
@@ -259,7 +260,6 @@ def _finalise_run(
     if "status_widget" in st.session_state:
         st.session_state["status_widget"].update(label=label, state=state)
         st.session_state.pop("status_widget", None)
-
 
 
 # --- Run / Stop buttons ---
