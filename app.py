@@ -77,6 +77,7 @@ def _simulation_worker(
         flush_supabase_log_handlers()
         out_queue.put(_RUN_DONE)
 
+
 st.set_page_config(page_title="ParrotLM", page_icon="🦜", layout="wide")
 st.title("🦜 ParrotLM")
 st.caption("Two-Agent Conversation Simulator")
@@ -86,31 +87,21 @@ with st.sidebar:
     st.header("Configuration")
 
     st.subheader("API Keys")
+    _default_openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_key = st.text_input(
         "OpenRouter API Key",
+        value=_default_openrouter_key,
         type="password",
-        help="Get one at https://openrouter.ai/keys",
+        help="Get one at https://openrouter.ai/keys. Leave as-is to use the key from your .env file.",
         key="openrouter_api_key",
     )
 
-    with st.expander("Supabase (optional cloud logging)", expanded=False):
-        supabase_url = st.text_input(
-            "Supabase URL",
-            value=os.getenv("SUPABASE_URL", ""),
-            help="Your Supabase project URL. Leave blank to disable cloud logging.",
-            key="supabase_url",
-        )
-        supabase_key = st.text_input(
-            "Supabase Anon Key",
-            value=os.getenv("SUPABASE_ANON_KEY", ""),
-            type="password",
-            help="Your Supabase anon/publishable key.",
-            key="supabase_anon_key",
-        )
-        if supabase_url.strip() and supabase_key.strip():
-            st.caption("🟢 Cloud logging enabled — session + application logs will be uploaded.")
-        else:
-            st.caption("⚪ Cloud logging disabled (no URL/key). Simulation still runs locally.")
+    if os.getenv("SUPABASE_URL", "").strip() and os.getenv(
+        "SUPABASE_ANON_KEY", ""
+    ).strip():
+        st.caption("☁️ Cloud logging active (Supabase)")
+    else:
+        st.caption("⚪ Cloud logging off")
 
     st.divider()
 
@@ -169,7 +160,7 @@ with col_a:
     st.markdown(
         f"""
         <div style="
-            border-left: 4px solid {AGENT_COLORS['A']};
+            border-left: 4px solid {AGENT_COLORS["A"]};
             padding: 12px 16px;
             border-radius: 0 8px 8px 0;
             background: rgba(74, 144, 217, 0.08);
@@ -190,7 +181,7 @@ with col_b:
     st.markdown(
         f"""
         <div style="
-            border-left: 4px solid {AGENT_COLORS['B']};
+            border-left: 4px solid {AGENT_COLORS["B"]};
             padding: 12px 16px;
             border-radius: 0 8px 8px 0;
             background: rgba(217, 74, 123, 0.08);
@@ -218,6 +209,7 @@ st.divider()
 # already-rendered messages (survives reruns).
 # `st.session_state["summary"]` is shown once a run finishes.
 
+
 def _render_entry(entry: Dict[str, Any]) -> None:
     """Render one conversation entry as a chat bubble."""
     with st.chat_message("assistant", avatar=AGENT_AVATARS[entry["slot"]]):
@@ -231,8 +223,9 @@ def _render_entry(entry: Dict[str, Any]) -> None:
             )
 
 
-def _finalise_run(run: Dict[str, Any], *, interrupted: bool = False,
-                   error: str | None = None) -> None:
+def _finalise_run(
+    run: Dict[str, Any], *, interrupted: bool = False, error: str | None = None
+) -> None:
     """Convert the live run into a persisted summary and clear the live handle."""
     totals = run["totals"]
     turn_count = totals["count"]
@@ -268,113 +261,6 @@ def _finalise_run(run: Dict[str, Any], *, interrupted: bool = False,
         st.session_state.pop("status_widget", None)
 
 
-def _fetch_recent_supabase_rows(
-    client: Any, experiment_id: str, *, limit: int = 20
-) -> Dict[str, Any]:
-    """Fetch the latest session + application rows for display.
-
-    Uses ordered + limited queries so the Supabase REST API's 1000-row
-    PostgREST pagesize cap never hides the newest rows.
-    """
-    result: Dict[str, Any] = {"session": [], "application": [], "error": None}
-    try:
-        session_resp = (
-            client.table("session_logs")
-            .select(
-                "experiment_id,turn_id,scenario,speaker_model,responder_model,"
-                "content,timestamp,latency_ms,input_tokens,output_tokens"
-            )
-            .order("timestamp", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        result["session"] = session_resp.data or []
-    except Exception as exc:  # noqa: BLE001
-        result["error"] = f"session_logs: {type(exc).__name__}: {exc}"
-    try:
-        app_resp = (
-            client.table("application_logs")
-            .select("timestamp,level,event,message")
-            .order("timestamp", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        result["application"] = app_resp.data or []
-    except Exception as exc:  # noqa: BLE001
-        prev = result["error"]
-        result["error"] = (prev + " | " if prev else "") + (
-            f"application_logs: {type(exc).__name__}: {exc}"
-        )
-    return result
-
-
-def _render_supabase_panel(
-    supabase_url_value: str, supabase_key_value: str,
-) -> None:
-    """Render a collapsible panel showing the latest Supabase rows."""
-    if not (supabase_url_value.strip() and supabase_key_value.strip()):
-        return
-    st.divider()
-    with st.expander("☁️ Recent Supabase logs", expanded=False):
-        st.caption(
-            "Ordered by timestamp (newest first) with a `LIMIT`, so the "
-            "Supabase REST API's 1000-row pagesize cap never hides new rows."
-        )
-        col_n, col_refresh = st.columns([1, 1])
-        with col_n:
-            show_n = st.number_input(
-                "Rows to show", min_value=1, max_value=100, value=10, step=1,
-                key="supabase_panel_n",
-            )
-        with col_refresh:
-            st.write("")
-            st.write("")
-            refresh = st.button("🔄 Refresh", use_container_width=True)
-
-        # Cache the fetched rows so they survive reruns until Refresh is hit.
-        cache_key = "supabase_panel_cache"
-        if refresh or cache_key not in st.session_state:
-            client = get_supabase_client(
-                url=supabase_url_value.strip() or None,
-                key=supabase_key_value.strip() or None,
-            )
-            if client is None:
-                st.session_state[cache_key] = {
-                    "error": "Supabase client unavailable (check URL/key).",
-                    "session": [], "application": [], "n": show_n,
-                }
-            else:
-                exp_id = st.session_state.get("last_experiment_id")
-                st.session_state[cache_key] = {
-                    **_fetch_recent_supabase_rows(client, exp_id or "", limit=int(show_n)),
-                    "n": int(show_n),
-                }
-
-        cache = st.session_state[cache_key]
-        if cache.get("error"):
-            st.error(cache["error"])
-
-        session_rows = cache.get("session", [])
-        app_rows = cache.get("application", [])
-        st.markdown(f"**`session_logs`** — {len(session_rows)} rows")
-        if session_rows:
-            import pandas as pd  # type: ignore[import-not-typed]
-            df = pd.DataFrame(session_rows)[
-                ["timestamp", "turn_id", "speaker_model", "content",
-                 "latency_ms", "input_tokens", "output_tokens"]
-            ]
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        else:
-            st.caption("No session rows found.")
-
-        st.markdown(f"**`application_logs`** — {len(app_rows)} rows")
-        if app_rows:
-            import pandas as pd  # type: ignore[import-not-typed]
-            df = pd.DataFrame(app_rows)[["timestamp", "level", "event", "message"]]
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        else:
-            st.caption("No application rows found.")
-
 
 # --- Run / Stop buttons ---
 live_run = st.session_state.get("run")
@@ -401,8 +287,16 @@ if "last_run_signature" not in st.session_state:
     st.session_state["last_run_signature"] = None
 
 signature = (
-    model_a, model_b, persona_a, persona_b, temp_a, temp_b,
-    num_turns, initial_message, max_tokens, context_window,
+    model_a,
+    model_b,
+    persona_a,
+    persona_b,
+    temp_a,
+    temp_b,
+    num_turns,
+    initial_message,
+    max_tokens,
+    context_window,
 )
 if st.session_state["last_run_signature"] != signature and not is_running:
     st.session_state.pop("conversation_log", None)
@@ -420,9 +314,7 @@ conversation_log: list[Dict[str, Any]] = st.session_state.get("conversation_log"
 
 # Show the initial user message if a run has happened or is in progress.
 if conversation_log or is_running or run_clicked:
-    initial_for_display = (
-        live_run["initial_message"] if live_run else initial_message
-    )
+    initial_for_display = live_run["initial_message"] if live_run else initial_message
     with st.chat_message("user"):
         st.markdown(initial_for_display)
 
@@ -462,10 +354,7 @@ if run_clicked and not is_running:
     )
 
     # --- Supabase wiring (mirrors main.py) ---
-    supabase_client = get_supabase_client(
-        url=supabase_url.strip() or None,
-        key=supabase_key.strip() or None,
-    )
+    supabase_client = get_supabase_client()
     install_supabase_log_handler(batch_size=10, client=supabase_client)
     session_logger = SupabaseBufferedLogger(batch_size=10)
     cloud_enabled = session_logger.is_available
@@ -576,13 +465,13 @@ if live_run:
     if live_run["stop_event"].is_set() and not finished:
         status.update(
             label=f"⛔ Stopping… {totals['count']} messages so far "
-                  f"(finishing current turn)",
+            f"(finishing current turn)",
         )
     elif not finished:
         status.update(
             label=f"▶ Running… {totals['count']} of "
-                  f"{live_run['num_turns'] * 2} messages "
-                  f"(turn {(totals['count'] + 1) // 2}/{live_run['num_turns']})",
+            f"{live_run['num_turns'] * 2} messages "
+            f"(turn {(totals['count'] + 1) // 2}/{live_run['num_turns']})",
         )
 
     if finished:
@@ -598,8 +487,3 @@ if live_run:
         # as soon as they arrive and the Stop button stays clickable.
         time.sleep(0.5)
         st.rerun()
-
-# --- Recent Supabase logs panel ---
-# Shown only when no run is in progress and Supabase credentials are present.
-if not is_running:
-    _render_supabase_panel(supabase_url, supabase_key)
