@@ -21,3 +21,9 @@ Thumbs.db
 
 # Ruff cache
 .ruff_cache/
+
+# Mypy cache
+.mypy_cache/
+
+# Pytest cache
+.pytest_cache/
