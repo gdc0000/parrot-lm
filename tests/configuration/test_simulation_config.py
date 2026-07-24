@@ -150,8 +150,8 @@ def test_load_with_missing_json_uses_defaults(monkeypatch, caplog):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
 
     config = SimulationConfig.load(json_path="non_existent.json")
-    assert config.model_a == "google/gemma-3n-e4b-it"
-    assert config.model_b == "google/gemma-3n-e4b-it"
+    assert config.model_a == "openrouter/free"
+    assert config.model_b == "openrouter/free"
     assert config.context_window == 5
     assert "Configuration file 'non_existent.json' not found" in caplog.text
 
@@ -213,8 +213,8 @@ def test_load_with_malformed_json_returns_defaults(monkeypatch, caplog):
 
         config = SimulationConfig.load(json_path=str(config_file))
 
-        assert config.model_a == "google/gemma-3n-e4b-it"
-        assert config.model_b == "google/gemma-3n-e4b-it"
+        assert config.model_a == "openrouter/free"
+        assert config.model_b == "openrouter/free"
         assert config.num_turns == 10
         assert "Failed to load configuration" in caplog.text
     finally:
@@ -237,7 +237,7 @@ def test_load_with_partial_json_uses_defaults_for_missing_sections(monkeypatch):
         config = SimulationConfig.load(json_path=str(config_file))
 
         assert config.model_a == "model-only-a"
-        assert config.model_b == "google/gemma-3n-e4b-it"
+        assert config.model_b == "openrouter/free"
         assert config.persona_a == "Chief Technology Officer"
         assert config.persona_b == "Financial Analyst"
         assert config.temperature_a == 1.0

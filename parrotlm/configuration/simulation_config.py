@@ -150,8 +150,8 @@ class SimulationConfig:
         sim = config_data.get("simulation", {})
 
         return cls(
-            model_a=agent_a.get("model", "google/gemma-3n-e4b-it"),
-            model_b=agent_b.get("model", "google/gemma-3n-e4b-it"),
+            model_a=agent_a.get("model", "openrouter/free"),
+            model_b=agent_b.get("model", "openrouter/free"),
             persona_a=agent_a.get("persona", "Chief Technology Officer"),
             persona_b=agent_b.get("persona", "Financial Analyst"),
             temperature_a=float(agent_a.get("temperature", 1.0)),

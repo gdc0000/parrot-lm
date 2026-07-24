@@ -1,12 +1,12 @@
 {
   "agents": {
     "agent_a": {
-      "model": "google/gemma-3n-e4b-it",
+      "model": "openrouter/free",
       "persona": "Chief Technology Officer",
       "temperature": 1.0
     },
     "agent_b": {
-      "model": "google/gemma-3n-e4b-it",
+      "model": "openrouter/free",
       "persona": "Financial Analyst",
       "temperature": 1.0
     }
