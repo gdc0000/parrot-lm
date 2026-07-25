@@ -1,6 +1,7 @@
 import pytest
 
 from parrotlm.validation.prompt_utils import (
+    compose_persona_from_traits,
     construct_system_prompt,
     retrieve_dialogue_formatting_rules,
     format_persona_instructions,
@@ -35,3 +36,19 @@ def test_format_persona_instructions():
     result = format_persona_instructions("rules", "persona")
     assert "rules" in result
     assert "persona" in result
+
+
+def test_compose_persona_from_traits_combines_role_and_traits():
+    persona = compose_persona_from_traits("CTO", ["skeptical", " curious "])
+    assert "CTO" in persona
+    assert "skeptical" in persona
+    assert "curious" in persona
+
+
+def test_compose_persona_from_traits_without_traits_returns_role():
+    assert compose_persona_from_traits("CTO", []) == "CTO"
+
+
+def test_compose_persona_from_traits_empty_role_defaults():
+    persona = compose_persona_from_traits("  ", ["curious"])
+    assert "conversation partner" in persona

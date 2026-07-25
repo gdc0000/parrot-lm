@@ -16,7 +16,67 @@ from parrotlm.infrastructure.supabase_logger import (
     install_supabase_log_handler,
 )
 from parrotlm.orchestration.orchestrator import AgentConfig, Orchestrator
-from parrotlm.validation.prompt_utils import construct_system_prompt
+from parrotlm.validation.prompt_utils import (
+    compose_persona_from_traits,
+    construct_system_prompt,
+)
+
+PRESET_PERSONAS = {
+    "Chief Technology Officer": "Chief Technology Officer",
+    "Financial Analyst": "Financial Analyst",
+    "Startup Founder": "Ambitious startup founder pitching a new venture",
+    "Skeptical Journalist": "Investigative journalist who challenges every claim",
+    "Therapist": "Empathetic therapist who listens and asks probing questions",
+    "Philosopher": "Reflective philosopher who questions assumptions",
+}
+
+PSYCHOLOGICAL_TRAITS = [
+    "curious", "skeptical", "optimistic", "pessimistic", "analytical",
+    "emotional", "assertive", "agreeable", "cautious", "impulsive",
+    "humorous", "formal", "empathetic", "competitive", "patient",
+    "cynical", "enthusiastic", "reserved",
+]
+
+# Muted, scholarly accent colours — one per agent.
+AGENT_ACCENTS = {"A": "#7FA6D9", "B": "#D9A37F"}
+
+# Minimum interval between in-place placeholder updates while streaming.
+_STREAM_UPDATE_INTERVAL_S = 0.1
+
+
+def persona_editor(agent_key: str, default_role: str) -> str:
+    """Render a persona picker: preset menu, trait composer, or free text.
+
+    Returns the final persona string used to build the agent's system prompt.
+    """
+    mode = st.radio(
+        "Persona source",
+        ["Preset", "Traits", "Custom"],
+        horizontal=True,
+        key=f"{agent_key}_persona_mode",
+    )
+    if mode == "Preset":
+        choice = st.selectbox(
+            "Preset persona",
+            list(PRESET_PERSONAS),
+            key=f"{agent_key}_persona_preset",
+        )
+        return PRESET_PERSONAS[choice]
+    if mode == "Traits":
+        role = st.text_input(
+            "Role", value=default_role, key=f"{agent_key}_persona_role"
+        )
+        traits = st.multiselect(
+            "Psychological traits",
+            PSYCHOLOGICAL_TRAITS,
+            default=["curious", "analytical"],
+            key=f"{agent_key}_persona_traits",
+        )
+        persona = compose_persona_from_traits(role, traits)
+        st.caption(f"_{persona}_")
+        return persona
+    return st.text_area("Persona", value=default_role, key=f"{agent_key}_persona_custom")
+
 
 # Load .env so SUPABASE_URL / SUPABASE_ANON_KEY default-fill the sidebar.
 try:
@@ -33,126 +93,118 @@ setup_logging()
 
 logger = logging.getLogger(__name__)
 
-AGENT_COLORS = {"A": "#4A90D9", "B": "#D94A7B"}
-# Streamlit's `st.chat_message(avatar=...)` only accepts "user", "assistant",
-# a single emoji, an image path, or a URL. A bare letter like "A" is treated as
-# a file path and raises "Error opening 'A'" — so use emoji avatars instead.
-AGENT_AVATARS = {"A": "🅰️", "B": "🅱️"}
-
-# Minimum interval between in-place placeholder updates while streaming.
-_STREAM_UPDATE_INTERVAL_S = 0.1
-
-
-st.set_page_config(page_title="ParrotLM", page_icon="🦜", layout="wide")
+st.set_page_config(
+    page_title="ParrotLM — Interaction Study Console",
+    page_icon="🦜",
+    layout="wide",
+)
 
 st.markdown(
     """
     <style>
-    /* ── Title gradient ── */
-    .title-gradient {
-        font-size: 2.2rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #7C5CFC 0%, #E040FB 50%, #FF6D00 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -0.02em;
+    /* ── Typography ── */
+    .wordmark {
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 1.9rem;
+        font-weight: 600;
+        color: #E4E2DC;
+        letter-spacing: -0.01em;
     }
-    .subtitle {
-        color: #8B949E;
-        font-size: 0.95rem;
-        letter-spacing: 0.04em;
-        margin-top: -0.4rem;
+    .wordmark-sub {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: #8B8778;
+        margin-top: 2px;
+    }
+    .header-rule {
+        border: none;
+        height: 1px;
+        background: #2E323B;
+        margin: 14px 0 20px 0;
     }
 
-    /* ── Agent identity cards (glass-morphism) ── */
-    .agent-card {
-        border-radius: 12px;
-        padding: 16px 20px;
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        margin-bottom: 8px;
-        transition: border-color 0.2s;
+    /* ── Panel headers ── */
+    .panel-header {
+        border-bottom: 2px solid;
+        padding: 10px 2px 10px 2px;
+        margin-bottom: 12px;
     }
-    .agent-card:hover { border-color: rgba(255, 255, 255, 0.12); }
-    .agent-card-agentA {
-        background: linear-gradient(135deg, rgba(74, 144, 217, 0.15) 0%, rgba(124, 92, 252, 0.08) 100%);
-        border-left: 3px solid #4A90D9;
-    }
-    .agent-card-agentB {
-        background: linear-gradient(135deg, rgba(217, 74, 123, 0.15) 0%, rgba(224, 64, 251, 0.08) 100%);
-        border-left: 3px solid #D94A7B;
-    }
-    .agent-card-name {
-        font-weight: 700;
+    .panel-header-a { border-color: #7FA6D9; }
+    .panel-header-b { border-color: #D9A37F; }
+    .panel-title {
+        font-family: Georgia, serif;
         font-size: 1.05rem;
-        margin-bottom: 4px;
+        font-weight: 600;
+        color: #E4E2DC;
     }
-    .agent-card-meta {
-        font-size: 0.82rem;
-        color: #8B949E;
-        line-height: 1.5;
-    }
-
-    /* ── Chat bubble refinements ── */
-    .stChatMessage { border-radius: 12px !important; }
-
-    /* ── Metrics pill ── */
-    .metric-pill {
-        display: inline-block;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 8px;
-        padding: 4px 10px;
+    .panel-meta {
         font-size: 0.78rem;
-        color: #8B949E;
-        margin-right: 6px;
-        margin-top: 4px;
+        color: #9C988C;
+        line-height: 1.55;
+        margin-top: 2px;
     }
-    .metric-pill strong { color: #E6EDF3; }
+    .panel-tag {
+        display: inline-block;
+        font-size: 0.68rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        padding: 1px 8px;
+        border-radius: 3px;
+        margin-bottom: 4px;
+        color: #14161A;
+    }
+    .panel-tag-a { background: #7FA6D9; }
+    .panel-tag-b { background: #D9A37F; }
 
-    /* ── Sidebar polish ── */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #161B22 0%, #0E1117 100%);
+    /* ── Message meta lines ── */
+    .msg-meta {
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #8B8778;
+        margin-bottom: 2px;
     }
-    [data-testid="stSidebar"] .stHeader { border-bottom: 1px solid rgba(255,255,255,0.06); }
+
+    /* ── Scrollable panels ── */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: #1A1D23;
+        border: 1px solid #2E323B !important;
+        border-radius: 6px;
+    }
+
+    /* ── Sidebar ── */
+    [data-testid="stSidebar"] {
+        background: #181B20;
+        border-right: 1px solid #2E323B;
+    }
+    [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        font-family: Georgia, serif;
+    }
 
     /* ── Buttons ── */
     .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #7C5CFC 0%, #E040FB 100%) !important;
+        background: #7FA6D9 !important;
+        color: #14161A !important;
         border: none !important;
         font-weight: 600;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.04em;
     }
-    .stButton > button[kind="primary"]:hover {
-        filter: brightness(1.1);
-    }
+    .stButton > button[kind="primary"]:hover { background: #96B7E2 !important; }
+    .stButton > button { border-radius: 4px !important; }
 
-    /* ── Divider glow ── */
-    .stDivider hr {
-        border: none;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(124, 92, 252, 0.3), transparent);
-    }
-
-    /* ── Success/info boxes ── */
-    .stAlert { border-radius: 10px !important; }
+    /* ── Summary box ── */
+    .stAlert { border-radius: 6px !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    '<div class="title-gradient">🦜 ParrotLM</div>'
-    '<div class="subtitle">Two-Agent Conversation Simulator</div>',
-    unsafe_allow_html=True,
-)
-
-# --- Sidebar: Configuration ---
+# --- Sidebar: Controls ---
 with st.sidebar:
-    st.header("Configuration")
+    st.header("Study Setup")
 
-    st.subheader("API Keys")
+    st.subheader("Credentials")
     _default_openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
     if "openrouter_api_key" not in st.session_state or not st.session_state.openrouter_api_key:
         st.session_state.openrouter_api_key = _default_openrouter_key
@@ -174,30 +226,28 @@ with st.sidebar:
 
     st.subheader("Agent A")
     model_a = st.text_input("Model", value="openrouter/free", key="model_a")
-    persona_a = st.text_area(
-        "Persona", value="Chief Technology Officer", key="persona_a"
-    )
+    persona_a = persona_editor("agent_a", "Chief Technology Officer")
     temp_a = st.slider("Temperature", 0.0, 2.0, 1.0, 0.1, key="temperature_a")
 
     st.divider()
 
     st.subheader("Agent B")
     model_b = st.text_input("Model", value="openrouter/free", key="model_b")
-    persona_b = st.text_area("Persona", value="Financial Analyst", key="persona_b")
+    persona_b = persona_editor("agent_b", "Financial Analyst")
     temp_b = st.slider("Temperature", 0.0, 2.0, 1.0, 0.1, key="temperature_b")
 
     st.divider()
 
     st.subheader("Simulation")
     num_turns = st.number_input(
-        "Number of turns (A-B round trips)",
+        "Number of turns (A–B round trips)",
         min_value=1,
         max_value=100,
         value=10,
         key="num_turns",
     )
     initial_message = st.text_area(
-        "Initial message",
+        "Opening message (spoken by Agent A)",
         value="What is your outlook on AI investment over the next 12 months?",
         key="initial_message",
     )
@@ -216,43 +266,38 @@ with st.sidebar:
         key="context_window",
     )
 
+    st.divider()
+
+    # --- Run / Stop controls ---
+    live_run = st.session_state.get("run")
+    is_running = live_run is not None
+
+    run_clicked = st.button(
+        "▶ Run Simulation",
+        type="primary",
+        use_container_width=True,
+        disabled=is_running,
+    )
+    stop_clicked = st.button(
+        "⏹ Stop",
+        type="secondary",
+        use_container_width=True,
+        disabled=not is_running,
+    )
+
 # --- Main Area ---
+st.markdown(
+    '<div class="wordmark">ParrotLM</div>'
+    '<div class="wordmark-sub">Simulated Interaction Study Console</div>'
+    '<hr class="header-rule"/>',
+    unsafe_allow_html=True,
+)
+
 if not openrouter_key:
     st.warning("No OpenRouter API key found. Set OPENROUTER_API_KEY in your .env or enter it in the sidebar.")
     st.stop()
 
-# --- Agent Identity Header ---
-col_a, col_b = st.columns(2)
-with col_a:
-    st.markdown(
-        f"""
-        <div class="agent-card agent-card-agentA">
-            <div class="agent-card-name">Agent A</div>
-            <div class="agent-card-meta">
-                {model_a}<br/>
-                <em>{persona_a}</em> &middot; temp {temp_a}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with col_b:
-    st.markdown(
-        f"""
-        <div class="agent-card agent-card-agentB">
-            <div class="agent-card-name">Agent B</div>
-            <div class="agent-card-meta">
-                {model_b}<br/>
-                <em>{persona_b}</em> &middot; temp {temp_b}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-st.divider()
-
-# --- Run Simulation ---
+# --- Run state management ---
 # Top-down model: one rerun = one agent response.
 # `st.session_state["run"]` holds the live run, if any:
 #   {generator, stop_requested, num_turns, initial_message, cloud_enabled,
@@ -262,17 +307,24 @@ st.divider()
 # `st.session_state["summary"]` is shown once a run finishes.
 
 
-def _render_entry(entry: Dict[str, Any]) -> None:
-    """Render one completed conversation entry as a chat bubble."""
-    with st.chat_message("assistant", avatar=AGENT_AVATARS[entry["slot"]]):
-        st.markdown(f"**Agent {entry['slot']}** &middot; `{entry['model']}`")
-        st.markdown(entry["content"])
-        st.markdown(
-            f'<span class="metric-pill"><strong>Turn</strong> {entry["turn"]}/{entry["num_turns"]}</span>'
-            f'<span class="metric-pill"><strong>Latency</strong> {entry["latency"]:.0f}ms</span>'
-            f'<span class="metric-pill"><strong>Tokens</strong> {entry["in_tokens"]} in → {entry["out_tokens"]} out</span>',
-            unsafe_allow_html=True,
-        )
+def _render_entry(entry: Dict[str, Any], panel) -> None:
+    """Render one completed conversation entry as a card inside its agent's panel."""
+    with panel:
+        card = st.container(border=True)
+        with card:
+            if entry.get("opener"):
+                st.markdown(
+                    '<div class="msg-meta">Opening message</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div class="msg-meta">Turn {entry["turn"]}/{entry["num_turns"]}'
+                    f" &nbsp;·&nbsp; {entry['latency']:.0f} ms"
+                    f" &nbsp;·&nbsp; {entry['in_tokens']}→{entry['out_tokens']} tokens</div>",
+                    unsafe_allow_html=True,
+                )
+            st.markdown(entry["content"])
 
 
 def _finalise_run(
@@ -310,26 +362,6 @@ def _finalise_run(
     st.session_state.pop("run", None)
 
 
-# --- Run / Stop buttons ---
-live_run = st.session_state.get("run")
-is_running = live_run is not None
-
-col_run, col_stop = st.columns([1, 1])
-with col_run:
-    run_clicked = st.button(
-        "▶ Run Simulation",
-        type="primary",
-        use_container_width=True,
-        disabled=is_running,
-    )
-with col_stop:
-    stop_clicked = st.button(
-        "⏹ Stop",
-        type="secondary",
-        use_container_width=True,
-        disabled=not is_running,
-    )
-
 # Clear previous results whenever the *configuration* changes.
 if "last_run_signature" not in st.session_state:
     st.session_state["last_run_signature"] = None
@@ -352,8 +384,7 @@ if st.session_state["last_run_signature"] != signature and not is_running:
     st.session_state["last_run_signature"] = signature
 
 # --- Stop button handler ---
-# Same granularity as before: the current response finishes, the run stops
-# before the next one starts.
+# The current response finishes, the run stops before the next one starts.
 if stop_clicked and live_run:
     live_run["stop_requested"] = True
     st.toast("Stopping after the current turn…")
@@ -422,54 +453,80 @@ if run_clicked and not is_running:
     st.session_state["run"] = run_state
     st.rerun()
 
-# --- Re-render any already-collected messages ---
+# --- Dual panels ---
+col_a, col_b = st.columns(2, gap="large")
+with col_a:
+    st.markdown(
+        f"""
+        <div class="panel-header panel-header-a">
+            <span class="panel-tag panel-tag-a">Agent A</span>
+            <div class="panel-title">{persona_a.split('.')[0]}</div>
+            <div class="panel-meta">{model_a} &nbsp;·&nbsp; temp {temp_a}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with col_b:
+    st.markdown(
+        f"""
+        <div class="panel-header panel-header-b">
+            <span class="panel-tag panel-tag-b">Agent B</span>
+            <div class="panel-title">{persona_b.split('.')[0]}</div>
+            <div class="panel-meta">{model_b} &nbsp;·&nbsp; temp {temp_b}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+panel_a = col_a.container(height=560)
+panel_b = col_b.container(height=560)
+panels = {"A": panel_a, "B": panel_b}
+
 conversation_log: List[Dict[str, Any]] = st.session_state.get("conversation_log", [])
 
-# Show the initial user message if a run has happened or is in progress.
-if conversation_log or is_running:
-    initial_for_display = live_run["initial_message"] if live_run else initial_message
-    with st.chat_message("user"):
-        st.markdown(initial_for_display)
+if not conversation_log and not is_running:
+    with panel_a:
+        st.caption("Agent A's contributions will appear here.")
+    with panel_b:
+        st.caption("Agent B's contributions will appear here.")
 
 for entry in conversation_log:
-    _render_entry(entry)
-
-if "summary" in st.session_state and not is_running:
-    st.divider()
-    st.success(st.session_state["summary"])
+    _render_entry(entry, panels[entry["slot"]])
 
 # --- Advance the live run by exactly one agent response ---
 if live_run:
     totals = live_run["totals"]
-    # Responses strictly alternate A, B, A, B…
+    # Messages strictly alternate A (opener), B, A, B…
     slot = "A" if totals["count"] % 2 == 0 else "B"
 
-    status_label = (
-        f"▶ Running… {totals['count']} of {live_run['num_turns'] * 2 + 1} messages "
-        f"(turn {(totals['count'] + 1) // 2}/{live_run['num_turns']})"
-    )
+    expected = live_run["num_turns"] * 2 + 1
     if live_run["stop_requested"]:
-        status_label = (
-            f"⛔ Stopping… {totals['count']} messages so far "
-            f"(finishing current response)"
-        )
+        st.caption(f"⛔ Stopping… {totals['count']} messages so far (finishing current response)")
+    else:
+        st.caption(f"▶ Running — message {totals['count'] + 1} of {expected}")
+    st.progress(min(totals["count"] / expected, 1.0))
 
-    st.status(status_label, expanded=False)
-    message_container = st.chat_message("assistant", avatar=AGENT_AVATARS[slot])
-    with message_container:
-        st.markdown(f"**Agent {slot}** &middot; `{live_run['models'][slot]}`")
-        placeholder = st.empty()
+    active_panel = panels[slot]
+    with active_panel:
+        card = st.container(border=True)
+        with card:
+            st.markdown(
+                f'<div class="msg-meta">Turn {(totals["count"]) // 2 + 1}/{live_run["num_turns"]}'
+                " &nbsp;·&nbsp; streaming…</div>",
+                unsafe_allow_html=True,
+            )
+            placeholder = st.empty()
 
-        streamed_parts: List[str] = []
-        last_render = [0.0]
+            streamed_parts: List[str] = []
+            last_render = [0.0]
 
-        def on_token(piece: str) -> None:
-            """Update the placeholder in real time (throttled, with cursor)."""
-            streamed_parts.append(piece)
-            now = time.time()
-            if now - last_render[0] >= _STREAM_UPDATE_INTERVAL_S:
-                last_render[0] = now
-                placeholder.markdown("".join(streamed_parts) + "▌")
+            def on_token(piece: str) -> None:
+                """Update the placeholder in real time (throttled, with cursor)."""
+                streamed_parts.append(piece)
+                now = time.time()
+                if now - last_render[0] >= _STREAM_UPDATE_INTERVAL_S:
+                    last_render[0] = now
+                    placeholder.markdown("".join(streamed_parts) + "▌")
 
     live_run["token_callback"] = on_token
     error_message: str | None = None
@@ -504,6 +561,7 @@ if live_run:
             "slot": log_entry["speaker_slot"],
             "model": log_entry["speaker_model"],
             "content": log_entry["content"],
+            "opener": log_entry["finish_reason"] == "seeded_opener",
             "turn": log_entry["turn_id"] + 1,
             "num_turns": live_run["num_turns"],
             "latency": log_entry["latency_ms"],
@@ -513,14 +571,6 @@ if live_run:
         conversation_log.append(rendered)
         st.session_state["conversation_log"] = conversation_log
 
-        with message_container:
-            st.markdown(
-                f'<span class="metric-pill"><strong>Turn</strong> {rendered["turn"]}/{rendered["num_turns"]}</span>'
-                f'<span class="metric-pill"><strong>Latency</strong> {rendered["latency"]:.0f}ms</span>'
-                f'<span class="metric-pill"><strong>Tokens</strong> {rendered["in_tokens"]} in → {rendered["out_tokens"]} out</span>',
-                unsafe_allow_html=True,
-            )
-
     if finished or live_run["stop_requested"]:
         _finalise_run(
             live_run,
@@ -528,3 +578,7 @@ if live_run:
             error=error_message,
         )
     st.rerun()
+
+if "summary" in st.session_state and not is_running:
+    st.divider()
+    st.success(st.session_state["summary"])

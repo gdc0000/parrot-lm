@@ -55,6 +55,26 @@ def format_persona_instructions(dialogue_formatting_rules: str, persona: str) ->
     )
 
 
+def compose_persona_from_traits(role: str, traits: list) -> str:
+    """Compose a persona string from a role and selected psychological traits.
+
+    Args:
+        role: The character's role or occupation (e.g. 'Chief Technology Officer').
+        traits: A list of psychological trait descriptors (e.g. ['skeptical', 'curious']).
+
+    Returns:
+        A persona sentence combining role and traits, suitable for `construct_system_prompt`.
+    """
+    clean_role = (role or "").strip() or "conversation partner"
+    clean_traits = [trait.strip() for trait in traits if isinstance(trait, str) and trait.strip()]
+    if not clean_traits:
+        return clean_role
+    return (
+        f"{clean_role}. Personality traits: {', '.join(clean_traits)}. "
+        "Let these traits shape your tone, opinions, and reactions."
+    )
+
+
 def construct_system_prompt(persona: str) -> str:
     """Build a dialogue-only system prompt with the provided persona context.
 
