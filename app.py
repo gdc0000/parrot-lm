@@ -117,7 +117,7 @@ with st.sidebar:
 
 # --- Main Area ---
 if not openrouter_key:
-    st.info("Enter your OpenRouter API key in the sidebar to get started.")
+    st.warning("No OpenRouter API key found. Set OPENROUTER_API_KEY in your .env or enter it in the sidebar.")
     st.stop()
 
 # --- Agent Identity Header ---
