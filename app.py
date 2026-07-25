@@ -53,6 +53,8 @@ with st.sidebar:
 
     st.subheader("API Keys")
     _default_openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    if "openrouter_api_key" not in st.session_state or not st.session_state.openrouter_api_key:
+        st.session_state.openrouter_api_key = _default_openrouter_key
     openrouter_key = st.text_input(
         "OpenRouter API Key",
         value=_default_openrouter_key,

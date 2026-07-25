@@ -30,3 +30,6 @@ Thumbs.db
 
 # Streamlit secrets (never commit credentials)
 .streamlit/secrets.toml
+
+# OpenAI / opencode config
+opencode.json
