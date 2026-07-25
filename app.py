@@ -16,12 +16,9 @@ from parrotlm.infrastructure.supabase_logger import (
     install_supabase_log_handler,
 )
 from parrotlm.orchestration.orchestrator import AgentConfig, Orchestrator
-from parrotlm.validation.prompt_utils import (
-    compose_persona_from_traits,
-    construct_system_prompt,
-)
+from parrotlm.validation.prompt_utils import construct_system_prompt
 
-PRESET_PERSONAS = {
+PRESETS = {
     "Chief Technology Officer": "Chief Technology Officer",
     "Financial Analyst": "Financial Analyst",
     "Startup Founder": "Ambitious startup founder pitching a new venture",
@@ -30,55 +27,36 @@ PRESET_PERSONAS = {
     "Philosopher": "Reflective philosopher who questions assumptions",
 }
 
-PSYCHOLOGICAL_TRAITS = [
-    "curious", "skeptical", "optimistic", "pessimistic", "analytical",
-    "emotional", "assertive", "agreeable", "cautious", "impulsive",
-    "humorous", "formal", "empathetic", "competitive", "patient",
-    "cynical", "enthusiastic", "reserved",
-]
-
-# Muted, scholarly accent colours — one per agent.
-AGENT_ACCENTS = {"A": "#7FA6D9", "B": "#D9A37F"}
-
-# Minimum interval between in-place placeholder updates while streaming.
 _STREAM_UPDATE_INTERVAL_S = 0.1
 
 
-def persona_editor(agent_key: str, default_role: str) -> str:
-    """Render a persona picker: preset menu, trait composer, or free text.
-
-    Returns the final persona string used to build the agent's system prompt.
-    """
-    mode = st.radio(
-        "Persona source",
-        ["Preset", "Traits", "Custom"],
-        horizontal=True,
-        key=f"{agent_key}_persona_mode",
+def persona_editor(agent_key: str) -> str:
+    choice = st.selectbox("Persona", list(PRESETS), key=f"{agent_key}_preset")
+    return st.text_area(
+        "Persona",
+        value=PRESETS[choice],
+        key=f"{agent_key}_persona",
+        height=80,
+        label_visibility="collapsed",
     )
-    if mode == "Preset":
-        choice = st.selectbox(
-            "Preset persona",
-            list(PRESET_PERSONAS),
-            key=f"{agent_key}_persona_preset",
-        )
-        return PRESET_PERSONAS[choice]
-    if mode == "Traits":
-        role = st.text_input(
-            "Role", value=default_role, key=f"{agent_key}_persona_role"
-        )
-        traits = st.multiselect(
-            "Psychological traits",
-            PSYCHOLOGICAL_TRAITS,
-            default=["curious", "analytical"],
-            key=f"{agent_key}_persona_traits",
-        )
-        persona = compose_persona_from_traits(role, traits)
-        st.caption(f"_{persona}_")
-        return persona
-    return st.text_area("Persona", value=default_role, key=f"{agent_key}_persona_custom")
 
 
-# Load .env so SUPABASE_URL / SUPABASE_ANON_KEY default-fill the sidebar.
+def agent_panel(slot: str, default_model: str) -> None:
+    st.markdown(f"#### Agent {slot}")
+    st.text_input("Model", value=default_model, key=f"model_{slot.lower()}")
+    persona_editor(f"agent_{slot.lower()}")
+    st.slider("Temperature", 0.0, 2.0, 1.0, 0.1, key=f"temperature_{slot.lower()}")
+
+
+def agent_state(slot: str, default_model: str, default_persona: str):
+    key = slot.lower()
+    return (
+        st.session_state.get(f"model_{key}", default_model),
+        st.session_state.get(f"agent_{key}_persona", default_persona),
+        st.session_state.get(f"temperature_{key}", 1.0),
+    )
+
+
 try:
     from dotenv import load_dotenv
 
@@ -86,312 +64,121 @@ try:
 except ImportError:
     pass
 
-import os  # noqa: E402  (imported after dotenv block for ordering clarity)
+import os  # noqa: E402
 
-# Configure stdout + rotating JSONL file handlers once per process.
 setup_logging()
-
 logger = logging.getLogger(__name__)
 
-st.set_page_config(
-    page_title="ParrotLM — Interaction Study Console",
-    page_icon="🦜",
-    layout="wide",
-)
+st.set_page_config(page_title="ParrotLM", page_icon="\U0001f99c", layout="wide")
 
+# Bubble styling
 st.markdown(
     """
     <style>
-    /* ── Typography ── */
-    .wordmark {
-        font-family: Georgia, 'Times New Roman', serif;
-        font-size: 1.9rem;
-        font-weight: 600;
-        color: #E4E2DC;
-        letter-spacing: -0.01em;
+    .element-container:has(.mk-a) + .element-container div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        background-color: rgba(28, 131, 225, 0.12);
+        border-radius: 16px 16px 16px 4px;
     }
-    .wordmark-sub {
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.18em;
-        color: #8B8778;
-        margin-top: 2px;
+    .element-container:has(.mk-b) + .element-container div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        background-color: rgba(120, 120, 120, 0.15);
+        border-radius: 16px 16px 4px 16px;
     }
-    .header-rule {
-        border: none;
-        height: 1px;
-        background: #2E323B;
-        margin: 14px 0 20px 0;
-    }
-
-    /* ── Panel headers ── */
-    .panel-header {
-        border-bottom: 2px solid;
-        padding: 10px 2px 10px 2px;
-        margin-bottom: 12px;
-    }
-    .panel-header-a { border-color: #7FA6D9; }
-    .panel-header-b { border-color: #D9A37F; }
-    .panel-title {
-        font-family: Georgia, serif;
-        font-size: 1.05rem;
-        font-weight: 600;
-        color: #E4E2DC;
-    }
-    .panel-meta {
-        font-size: 0.78rem;
-        color: #9C988C;
-        line-height: 1.55;
-        margin-top: 2px;
-    }
-    .panel-tag {
-        display: inline-block;
-        font-size: 0.68rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        padding: 1px 8px;
-        border-radius: 3px;
-        margin-bottom: 4px;
-        color: #14161A;
-    }
-    .panel-tag-a { background: #7FA6D9; }
-    .panel-tag-b { background: #D9A37F; }
-
-    /* ── Message meta lines ── */
-    .msg-meta {
-        font-size: 0.72rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #8B8778;
-        margin-bottom: 2px;
-    }
-
-    /* ── Scrollable panels ── */
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        background: #1A1D23;
-        border: 1px solid #2E323B !important;
-        border-radius: 6px;
-    }
-
-    /* ── Sidebar ── */
-    [data-testid="stSidebar"] {
-        background: #181B20;
-        border-right: 1px solid #2E323B;
-    }
-    [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-        font-family: Georgia, serif;
-    }
-
-    /* ── Buttons ── */
-    .stButton > button[kind="primary"] {
-        background: #7FA6D9 !important;
-        color: #14161A !important;
-        border: none !important;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-    }
-    .stButton > button[kind="primary"]:hover { background: #96B7E2 !important; }
-    .stButton > button { border-radius: 4px !important; }
-
-    /* ── Summary box ── */
-    .stAlert { border-radius: 6px !important; }
+    .mk-a, .mk-b { display: none; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# --- Sidebar: Controls ---
-with st.sidebar:
-    st.header("Study Setup")
+st.title("ParrotLM")
 
-    st.subheader("Credentials")
-    _default_openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
-    if "openrouter_api_key" not in st.session_state or not st.session_state.openrouter_api_key:
-        st.session_state.openrouter_api_key = _default_openrouter_key
-    openrouter_key = st.text_input(
-        "OpenRouter API Key",
-        value=_default_openrouter_key,
-        type="password",
-        help="Get one at https://openrouter.ai/keys. Leave as-is to use the key from your .env file.",
-        key="openrouter_api_key",
-    )
+live_run = st.session_state.get("run")
+is_running = live_run is not None
 
-    _supabase_url, _supabase_key = resolve_supabase_credentials(None, None)
-    if _supabase_url and _supabase_key:
-        st.caption("☁️ Cloud logging active (Supabase)")
-    else:
-        st.caption("⚪ Cloud logging off")
-
-    st.divider()
-
-    st.subheader("Agent A")
-    model_a = st.text_input("Model", value="openrouter/free", key="model_a")
-    persona_a = persona_editor("agent_a", "Chief Technology Officer")
-    temp_a = st.slider("Temperature", 0.0, 2.0, 1.0, 0.1, key="temperature_a")
-
-    st.divider()
-
-    st.subheader("Agent B")
-    model_b = st.text_input("Model", value="openrouter/free", key="model_b")
-    persona_b = persona_editor("agent_b", "Financial Analyst")
-    temp_b = st.slider("Temperature", 0.0, 2.0, 1.0, 0.1, key="temperature_b")
-
-    st.divider()
-
-    st.subheader("Simulation")
-    num_turns = st.number_input(
-        "Number of turns (A–B round trips)",
-        min_value=1,
-        max_value=100,
-        value=10,
-        key="num_turns",
-    )
+# --- Main-tab configuration ---
+with st.expander("Configuration", expanded=not st.session_state.get("conversation_log")):
+    cred_col, sim_col = st.columns(2)
+    with cred_col:
+        st.subheader("Credentials")
+        _default_key = os.getenv("OPENROUTER_API_KEY", "")
+        if "openrouter_api_key" not in st.session_state or not st.session_state.openrouter_api_key:
+            st.session_state.openrouter_api_key = _default_key
+        openrouter_key = st.text_input(
+            "OpenRouter API Key",
+            value=_default_key,
+            type="password",
+            key="openrouter_api_key",
+        )
+        _supabase_url, _supabase_key = resolve_supabase_credentials(None, None)
+        st.caption("Supabase: " + ("active" if _supabase_url and _supabase_key else "off"))
+    with sim_col:
+        st.subheader("Simulation")
+        num_turns = st.number_input("Turns (A\u2013B round trips)", min_value=1, max_value=100, value=10)
+        max_tokens = st.number_input("Max tokens / response", min_value=100, max_value=4096, value=1000)
+        context_window = st.number_input("Context window (turns)", min_value=1, max_value=50, value=5)
     initial_message = st.text_area(
-        "Opening message (spoken by Agent A)",
+        "Opening message (Agent A)",
         value="What is your outlook on AI investment over the next 12 months?",
-        key="initial_message",
+        height=68,
     )
-    max_tokens = st.number_input(
-        "Max tokens per response",
-        min_value=100,
-        max_value=4096,
-        value=1000,
-        key="max_tokens",
-    )
-    context_window = st.number_input(
-        "Context window (turns of history)",
-        min_value=1,
-        max_value=50,
-        value=5,
-        key="context_window",
-    )
-
-    st.divider()
-
-    # --- Run / Stop controls ---
-    live_run = st.session_state.get("run")
-    is_running = live_run is not None
-
-    run_clicked = st.button(
-        "▶ Run Simulation",
-        type="primary",
-        use_container_width=True,
-        disabled=is_running,
-    )
-    stop_clicked = st.button(
-        "⏹ Stop",
-        type="secondary",
-        use_container_width=True,
-        disabled=not is_running,
-    )
-
-# --- Main Area ---
-st.markdown(
-    '<div class="wordmark">ParrotLM</div>'
-    '<div class="wordmark-sub">Simulated Interaction Study Console</div>'
-    '<hr class="header-rule"/>',
-    unsafe_allow_html=True,
-)
 
 if not openrouter_key:
-    st.warning("No OpenRouter API key found. Set OPENROUTER_API_KEY in your .env or enter it in the sidebar.")
+    st.warning("No OpenRouter API key. Set OPENROUTER_API_KEY in .env or enter it above.")
     st.stop()
 
-# --- Run state management ---
-# Top-down model: one rerun = one agent response.
-# `st.session_state["run"]` holds the live run, if any:
-#   {generator, stop_requested, num_turns, initial_message, cloud_enabled,
-#    session_logger, session_rows_pushed, totals, experiment_id, models}
-# `st.session_state["conversation_log"]` is the single source of truth for
-# already-rendered messages (survives reruns).
-# `st.session_state["summary"]` is shown once a run finishes.
+# --- Panel toggles + run controls ---
+t_a, t_b, t_run, t_stop = st.columns([1, 1, 1, 1])
+with t_a:
+    show_a = st.toggle("Agent A panel", value=False, key="show_agent_a")
+with t_b:
+    show_b = st.toggle("Agent B panel", value=False, key="show_agent_b")
+with t_run:
+    run_clicked = st.button("Run", type="primary", use_container_width=True, disabled=is_running)
+with t_stop:
+    stop_clicked = st.button("Stop", type="secondary", use_container_width=True, disabled=not is_running)
 
+# --- Layout: left panel | main | right panel ---
+spec: List[float] = []
+if show_a:
+    spec.append(2)
+spec.append(5)
+if show_b:
+    spec.append(2)
+cols = st.columns(spec)
 
-def _render_entry(entry: Dict[str, Any], panel) -> None:
-    """Render one completed conversation entry as a card inside its agent's panel."""
-    with panel:
-        card = st.container(border=True)
-        with card:
-            if entry.get("opener"):
-                st.markdown(
-                    '<div class="msg-meta">Opening message</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<div class="msg-meta">Turn {entry["turn"]}/{entry["num_turns"]}'
-                    f" &nbsp;·&nbsp; {entry['latency']:.0f} ms"
-                    f" &nbsp;·&nbsp; {entry['in_tokens']}→{entry['out_tokens']} tokens</div>",
-                    unsafe_allow_html=True,
-                )
-            st.markdown(entry["content"])
+pos = 0
+if show_a:
+    with cols[pos]:
+        with st.container(border=True):
+            agent_panel("A", "openrouter/free")
+    pos += 1
+main_col = cols[pos]
+pos += 1
+if show_b:
+    with cols[pos]:
+        with st.container(border=True):
+            agent_panel("B", "openrouter/free")
 
+model_a, persona_a, temp_a = agent_state("A", "openrouter/free", "Chief Technology Officer")
+model_b, persona_b, temp_b = agent_state("B", "openrouter/free", "Financial Analyst")
 
-def _finalise_run(
-    run: Dict[str, Any], *, interrupted: bool = False, error: str | None = None
-) -> None:
-    """Flush logging, convert the live run into a summary, and clear the handle."""
-    run["session_logger"].flush()
-    flush_supabase_log_handlers()
-
-    totals = run["totals"]
-    turn_count = totals["count"]
-    avg_latency = totals["latency_ms"] / turn_count if turn_count else 0
-
-    summary = (
-        f"**{'Interrupted' if interrupted else 'Simulation complete'}** "
-        f"— {turn_count} messages  \n"
-        f"Total tokens: {totals['input_tokens']} in → "
-        f"{totals['output_tokens']} out  ·  "
-        f"Avg latency: {avg_latency:.0f}ms"
-    )
-    if run["cloud_enabled"]:
-        summary += (
-            f"  \n☁️ Uploaded {run['session_rows_pushed']} session rows + "
-            f"application logs to Supabase."
-        )
-    else:
-        summary += "  \n⚪ Cloud logging skipped (no Supabase credentials)."
-    if error:
-        summary += f"  \n❌ {error}"
-    summary += f"  \n🧪 experiment_id: `{run['experiment_id']}`"
-
-    st.session_state["summary"] = summary
-    # Remember the experiment_id so the Supabase panel can highlight its rows.
-    st.session_state["last_experiment_id"] = run["experiment_id"]
-    st.session_state.pop("run", None)
-
-
-# Clear previous results whenever the *configuration* changes.
+# --- State management ---
+if "conversation_log" not in st.session_state:
+    st.session_state["conversation_log"] = []
 if "last_run_signature" not in st.session_state:
     st.session_state["last_run_signature"] = None
 
-signature = (
-    model_a,
-    model_b,
-    persona_a,
-    persona_b,
-    temp_a,
-    temp_b,
-    num_turns,
-    initial_message,
-    max_tokens,
-    context_window,
-)
+signature = (model_a, model_b, persona_a, persona_b, temp_a, temp_b, num_turns, initial_message, max_tokens, context_window)
 if st.session_state["last_run_signature"] != signature and not is_running:
     st.session_state.pop("conversation_log", None)
     st.session_state.pop("summary", None)
     st.session_state["last_run_signature"] = signature
 
-# --- Stop button handler ---
-# The current response finishes, the run stops before the next one starts.
 if stop_clicked and live_run:
     live_run["stop_requested"] = True
-    st.toast("Stopping after the current turn…")
+    st.toast("Stopping after the current turn\u2026")
 
-# --- Kick off a new run ---
+# --- New run ---
 if run_clicked and not is_running:
-    # Fresh run: reset persisted state.
     st.session_state["conversation_log"] = []
     st.session_state.pop("summary", None)
 
@@ -416,7 +203,6 @@ if run_clicked and not is_running:
         openrouter_api_key=openrouter_key,
     )
 
-    # --- Supabase wiring (mirrors main.py) ---
     supabase_client = get_supabase_client()
     install_supabase_log_handler(batch_size=10, client=supabase_client)
     session_logger = SupabaseBufferedLogger(batch_size=10)
@@ -430,19 +216,13 @@ if run_clicked and not is_running:
         "session_rows_pushed": 0,
         "experiment_id": orchestrator.experiment_id,
         "models": {"A": model_a, "B": model_b},
-        "totals": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "latency_ms": 0.0,
-            "count": 0,
-        },
+        "totals": {"input_tokens": 0, "output_tokens": 0, "latency_ms": 0.0, "count": 0},
     }
-    # The token callback is bound per rerun (it writes into that rerun's
-    # placeholder), so route it through a mutable holder on the run state.
+
     def _dispatch_token(piece: str) -> None:
-        callback = run_state.get("token_callback")
-        if callback is not None:
-            callback(piece)
+        cb = run_state.get("token_callback")
+        if cb is not None:
+            cb(piece)
 
     run_state["generator"] = orchestrator.run_simulation(
         num_turns=num_turns,
@@ -453,132 +233,119 @@ if run_clicked and not is_running:
     st.session_state["run"] = run_state
     st.rerun()
 
-# --- Dual panels ---
-col_a, col_b = st.columns(2, gap="large")
-with col_a:
-    st.markdown(
-        f"""
-        <div class="panel-header panel-header-a">
-            <span class="panel-tag panel-tag-a">Agent A</span>
-            <div class="panel-title">{persona_a.split('.')[0]}</div>
-            <div class="panel-meta">{model_a} &nbsp;·&nbsp; temp {temp_a}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with col_b:
-    st.markdown(
-        f"""
-        <div class="panel-header panel-header-b">
-            <span class="panel-tag panel-tag-b">Agent B</span>
-            <div class="panel-title">{persona_b.split('.')[0]}</div>
-            <div class="panel-meta">{model_b} &nbsp;·&nbsp; temp {temp_b}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+# --- Chat area ---
+with main_col:
+    conversation_log: List[Dict[str, Any]] = st.session_state.get("conversation_log", [])
 
-panel_a = col_a.container(height=560)
-panel_b = col_b.container(height=560)
-panels = {"A": panel_a, "B": panel_b}
-
-conversation_log: List[Dict[str, Any]] = st.session_state.get("conversation_log", [])
-
-if not conversation_log and not is_running:
-    with panel_a:
-        st.caption("Agent A's contributions will appear here.")
-    with panel_b:
-        st.caption("Agent B's contributions will appear here.")
-
-for entry in conversation_log:
-    _render_entry(entry, panels[entry["slot"]])
-
-# --- Advance the live run by exactly one agent response ---
-if live_run:
-    totals = live_run["totals"]
-    # Messages strictly alternate A (opener), B, A, B…
-    slot = "A" if totals["count"] % 2 == 0 else "B"
-
-    expected = live_run["num_turns"] * 2 + 1
-    if live_run["stop_requested"]:
-        st.caption(f"⛔ Stopping… {totals['count']} messages so far (finishing current response)")
-    else:
-        st.caption(f"▶ Running — message {totals['count'] + 1} of {expected}")
-    st.progress(min(totals["count"] / expected, 1.0))
-
-    active_panel = panels[slot]
-    with active_panel:
-        card = st.container(border=True)
-        with card:
-            st.markdown(
-                f'<div class="msg-meta">Turn {(totals["count"]) // 2 + 1}/{live_run["num_turns"]}'
-                " &nbsp;·&nbsp; streaming…</div>",
-                unsafe_allow_html=True,
-            )
-            placeholder = st.empty()
-
-            streamed_parts: List[str] = []
-            last_render = [0.0]
-
-            def on_token(piece: str) -> None:
-                """Update the placeholder in real time (throttled, with cursor)."""
-                streamed_parts.append(piece)
-                now = time.time()
-                if now - last_render[0] >= _STREAM_UPDATE_INTERVAL_S:
-                    last_render[0] = now
-                    placeholder.markdown("".join(streamed_parts) + "▌")
-
-    live_run["token_callback"] = on_token
-    error_message: str | None = None
-    log_entry: Dict[str, Any] | None = None
-    finished = False
-    try:
-        log_entry = next(live_run["generator"], None)
-        if log_entry is None:
-            finished = True
-    except StopIteration:
-        finished = True
-    except Exception as exception:  # noqa: BLE001  (surfaced to UI)
-        error_message = str(exception).replace(openrouter_key, "[redacted]")
-        finished = True
-
-    # Final in-place render of the full response (no cursor).
-    final_content = (
-        log_entry["content"] if log_entry else "".join(streamed_parts).strip()
-    )
-    placeholder.markdown(final_content or "…")
-
-    if log_entry is not None:
-        totals["input_tokens"] += log_entry["input_tokens"]
-        totals["output_tokens"] += log_entry["output_tokens"]
-        totals["latency_ms"] += log_entry["latency_ms"]
-        totals["count"] += 1
-        if live_run["cloud_enabled"]:
-            live_run["session_logger"].push(log_entry)
-            live_run["session_rows_pushed"] += 1
-
-        rendered = {
-            "slot": log_entry["speaker_slot"],
-            "model": log_entry["speaker_model"],
-            "content": log_entry["content"],
-            "opener": log_entry["finish_reason"] == "seeded_opener",
-            "turn": log_entry["turn_id"] + 1,
-            "num_turns": live_run["num_turns"],
-            "latency": log_entry["latency_ms"],
-            "in_tokens": log_entry["input_tokens"],
-            "out_tokens": log_entry["output_tokens"],
-        }
-        conversation_log.append(rendered)
-        st.session_state["conversation_log"] = conversation_log
-
-    if finished or live_run["stop_requested"]:
-        _finalise_run(
-            live_run,
-            interrupted=bool(live_run["stop_requested"]),
-            error=error_message,
+    # Completed messages first, so the conversation unfolds live during a run
+    for i, entry in enumerate(conversation_log):
+        slot = entry["slot"]
+        header = (
+            f"**Agent {slot}** \u00b7 T{entry['turn']}/{entry['num_turns']} "
+            f"\u00b7 {entry['latency']:.0f}ms \u00b7 {entry['in_tokens']}\u2192{entry['out_tokens']}"
         )
-    st.rerun()
+        if slot == "A":
+            body, _spacer = st.columns([5, 1])
+        else:
+            _spacer, body = st.columns([1, 5])
+        with body:
+            st.markdown(f'<span class="mk-{slot.lower()}"></span>', unsafe_allow_html=True)
+            with st.container(border=True):
+                st.caption(header)
+                st.markdown(entry["content"])
 
-if "summary" in st.session_state and not is_running:
-    st.divider()
-    st.success(st.session_state["summary"])
+    if not conversation_log and not is_running:
+        st.caption("Start a simulation to see the conversation here.")
+
+    if is_running:
+        totals = live_run["totals"]
+        expected = live_run["num_turns"] * 2 + 1
+        if live_run["stop_requested"]:
+            st.caption(f"Stopping\u2026 {totals['count']} messages so far")
+        else:
+            st.caption(f"Message {totals['count'] + 1} of {expected}")
+        st.progress(min(totals["count"] / expected, 1.0))
+
+        slot = "A" if totals["count"] % 2 == 0 else "B"
+        if slot == "A":
+            body, _spacer = st.columns([5, 1])
+        else:
+            _spacer, body = st.columns([1, 5])
+
+        with body:
+            st.markdown(f'<span class="mk-{slot.lower()}"></span>', unsafe_allow_html=True)
+            with st.container(border=True):
+                st.caption(f"**Agent {slot}** \u00b7 streaming\u2026")
+                placeholder = st.empty()
+
+                streamed_parts: List[str] = []
+                last_render = [0.0]
+
+                def on_token(piece: str) -> None:
+                    streamed_parts.append(piece)
+                    now = time.time()
+                    if now - last_render[0] >= _STREAM_UPDATE_INTERVAL_S:
+                        last_render[0] = now
+                        placeholder.markdown("".join(streamed_parts) + "\u258c")
+
+        live_run["token_callback"] = on_token
+        error_message: str | None = None
+        log_entry: Dict[str, Any] | None = None
+        finished = False
+        try:
+            log_entry = next(live_run["generator"], None)
+            if log_entry is None:
+                finished = True
+        except StopIteration:
+            finished = True
+        except Exception as exc:
+            error_message = str(exc).replace(openrouter_key, "[redacted]")
+            finished = True
+
+        final_content = log_entry["content"] if log_entry else "".join(streamed_parts).strip()
+        placeholder.markdown(final_content or "\u2026")
+
+        if log_entry is not None:
+            totals["input_tokens"] += log_entry["input_tokens"]
+            totals["output_tokens"] += log_entry["output_tokens"]
+            totals["latency_ms"] += log_entry["latency_ms"]
+            totals["count"] += 1
+            if live_run["cloud_enabled"]:
+                live_run["session_logger"].push(log_entry)
+                live_run["session_rows_pushed"] += 1
+
+            conversation_log.append({
+                "slot": log_entry["speaker_slot"],
+                "content": log_entry["content"],
+                "turn": log_entry["turn_id"] + 1,
+                "num_turns": live_run["num_turns"],
+                "latency": log_entry["latency_ms"],
+                "in_tokens": log_entry["input_tokens"],
+                "out_tokens": log_entry["output_tokens"],
+            })
+            st.session_state["conversation_log"] = conversation_log
+
+        if finished or live_run["stop_requested"]:
+            run = live_run
+            run["session_logger"].flush()
+            flush_supabase_log_handlers()
+            t = run["totals"]
+            cnt = t["count"]
+            avg = t["latency_ms"] / cnt if cnt else 0
+            summary = (
+                f"**{'Interrupted' if run['stop_requested'] else 'Done'}** \u2014 "
+                f"{cnt} messages \u00b7 {t['input_tokens']}\u2192{t['output_tokens']} tokens "
+                f"\u00b7 {avg:.0f}ms avg"
+            )
+            if run["cloud_enabled"]:
+                summary += f" \u00b7 {run['session_rows_pushed']} rows \u2192 Supabase"
+            if error_message:
+                summary += f" \u00b7 {error_message}"
+            summary += f" \u00b7 `{run['experiment_id']}`"
+            st.session_state["summary"] = summary
+            st.session_state["last_experiment_id"] = run["experiment_id"]
+            st.session_state.pop("run", None)
+        st.rerun()
+
+    elif "summary" in st.session_state:
+        st.success(st.session_state["summary"])
