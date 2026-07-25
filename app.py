@@ -44,8 +44,109 @@ _STREAM_UPDATE_INTERVAL_S = 0.1
 
 
 st.set_page_config(page_title="ParrotLM", page_icon="🦜", layout="wide")
-st.title("🦜 ParrotLM")
-st.caption("Two-Agent Conversation Simulator")
+
+st.markdown(
+    """
+    <style>
+    /* ── Title gradient ── */
+    .title-gradient {
+        font-size: 2.2rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #7C5CFC 0%, #E040FB 50%, #FF6D00 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.02em;
+    }
+    .subtitle {
+        color: #8B949E;
+        font-size: 0.95rem;
+        letter-spacing: 0.04em;
+        margin-top: -0.4rem;
+    }
+
+    /* ── Agent identity cards (glass-morphism) ── */
+    .agent-card {
+        border-radius: 12px;
+        padding: 16px 20px;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        margin-bottom: 8px;
+        transition: border-color 0.2s;
+    }
+    .agent-card:hover { border-color: rgba(255, 255, 255, 0.12); }
+    .agent-card-agentA {
+        background: linear-gradient(135deg, rgba(74, 144, 217, 0.15) 0%, rgba(124, 92, 252, 0.08) 100%);
+        border-left: 3px solid #4A90D9;
+    }
+    .agent-card-agentB {
+        background: linear-gradient(135deg, rgba(217, 74, 123, 0.15) 0%, rgba(224, 64, 251, 0.08) 100%);
+        border-left: 3px solid #D94A7B;
+    }
+    .agent-card-name {
+        font-weight: 700;
+        font-size: 1.05rem;
+        margin-bottom: 4px;
+    }
+    .agent-card-meta {
+        font-size: 0.82rem;
+        color: #8B949E;
+        line-height: 1.5;
+    }
+
+    /* ── Chat bubble refinements ── */
+    .stChatMessage { border-radius: 12px !important; }
+
+    /* ── Metrics pill ── */
+    .metric-pill {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 4px 10px;
+        font-size: 0.78rem;
+        color: #8B949E;
+        margin-right: 6px;
+        margin-top: 4px;
+    }
+    .metric-pill strong { color: #E6EDF3; }
+
+    /* ── Sidebar polish ── */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #161B22 0%, #0E1117 100%);
+    }
+    [data-testid="stSidebar"] .stHeader { border-bottom: 1px solid rgba(255,255,255,0.06); }
+
+    /* ── Buttons ── */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #7C5CFC 0%, #E040FB 100%) !important;
+        border: none !important;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+    .stButton > button[kind="primary"]:hover {
+        filter: brightness(1.1);
+    }
+
+    /* ── Divider glow ── */
+    .stDivider hr {
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(124, 92, 252, 0.3), transparent);
+    }
+
+    /* ── Success/info boxes ── */
+    .stAlert { border-radius: 10px !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    '<div class="title-gradient">🦜 ParrotLM</div>'
+    '<div class="subtitle">Two-Agent Conversation Simulator</div>',
+    unsafe_allow_html=True,
+)
 
 # --- Sidebar: Configuration ---
 with st.sidebar:
@@ -125,19 +226,11 @@ col_a, col_b = st.columns(2)
 with col_a:
     st.markdown(
         f"""
-        <div style="
-            border-left: 4px solid {AGENT_COLORS["A"]};
-            padding: 12px 16px;
-            border-radius: 0 8px 8px 0;
-            background: rgba(74, 144, 217, 0.08);
-            margin-bottom: 8px;
-        ">
-            <div style="font-weight: 700; font-size: 1.05em; margin-bottom: 4px;">
-                Agent A
-            </div>
-            <div style="font-size: 0.85em; opacity: 0.8;">
+        <div class="agent-card agent-card-agentA">
+            <div class="agent-card-name">Agent A</div>
+            <div class="agent-card-meta">
                 {model_a}<br/>
-                <em>{persona_a}</em> · temp {temp_a}
+                <em>{persona_a}</em> &middot; temp {temp_a}
             </div>
         </div>
         """,
@@ -146,19 +239,11 @@ with col_a:
 with col_b:
     st.markdown(
         f"""
-        <div style="
-            border-left: 4px solid {AGENT_COLORS["B"]};
-            padding: 12px 16px;
-            border-radius: 0 8px 8px 0;
-            background: rgba(217, 74, 123, 0.08);
-            margin-bottom: 8px;
-        ">
-            <div style="font-weight: 700; font-size: 1.05em; margin-bottom: 4px;">
-                Agent B
-            </div>
-            <div style="font-size: 0.85em; opacity: 0.8;">
+        <div class="agent-card agent-card-agentB">
+            <div class="agent-card-name">Agent B</div>
+            <div class="agent-card-meta">
                 {model_b}<br/>
-                <em>{persona_b}</em> · temp {temp_b}
+                <em>{persona_b}</em> &middot; temp {temp_b}
             </div>
         </div>
         """,
@@ -180,14 +265,14 @@ st.divider()
 def _render_entry(entry: Dict[str, Any]) -> None:
     """Render one completed conversation entry as a chat bubble."""
     with st.chat_message("assistant", avatar=AGENT_AVATARS[entry["slot"]]):
-        st.markdown(f"**Agent {entry['slot']}** · `{entry['model']}`")
+        st.markdown(f"**Agent {entry['slot']}** &middot; `{entry['model']}`")
         st.markdown(entry["content"])
-        with st.status("Metrics", expanded=False):
-            st.markdown(
-                f"**Turn** {entry['turn']}/{entry['num_turns']}  \n"
-                f"**Latency** {entry['latency']:.0f}ms  \n"
-                f"**Tokens** {entry['in_tokens']} in → {entry['out_tokens']} out"
-            )
+        st.markdown(
+            f'<span class="metric-pill"><strong>Turn</strong> {entry["turn"]}/{entry["num_turns"]}</span>'
+            f'<span class="metric-pill"><strong>Latency</strong> {entry["latency"]:.0f}ms</span>'
+            f'<span class="metric-pill"><strong>Tokens</strong> {entry["in_tokens"]} in → {entry["out_tokens"]} out</span>',
+            unsafe_allow_html=True,
+        )
 
 
 def _finalise_run(
@@ -360,7 +445,7 @@ if live_run:
     slot = "A" if totals["count"] % 2 == 0 else "B"
 
     status_label = (
-        f"▶ Running… {totals['count']} of {live_run['num_turns'] * 2} messages "
+        f"▶ Running… {totals['count']} of {live_run['num_turns'] * 2 + 1} messages "
         f"(turn {(totals['count'] + 1) // 2}/{live_run['num_turns']})"
     )
     if live_run["stop_requested"]:
@@ -372,7 +457,7 @@ if live_run:
     st.status(status_label, expanded=False)
     message_container = st.chat_message("assistant", avatar=AGENT_AVATARS[slot])
     with message_container:
-        st.markdown(f"**Agent {slot}** · `{live_run['models'][slot]}`")
+        st.markdown(f"**Agent {slot}** &middot; `{live_run['models'][slot]}`")
         placeholder = st.empty()
 
         streamed_parts: List[str] = []
@@ -429,13 +514,12 @@ if live_run:
         st.session_state["conversation_log"] = conversation_log
 
         with message_container:
-            with st.status("Metrics", expanded=False):
-                st.markdown(
-                    f"**Turn** {rendered['turn']}/{rendered['num_turns']}  \n"
-                    f"**Latency** {rendered['latency']:.0f}ms  \n"
-                    f"**Tokens** {rendered['in_tokens']} in → "
-                    f"{rendered['out_tokens']} out"
-                )
+            st.markdown(
+                f'<span class="metric-pill"><strong>Turn</strong> {rendered["turn"]}/{rendered["num_turns"]}</span>'
+                f'<span class="metric-pill"><strong>Latency</strong> {rendered["latency"]:.0f}ms</span>'
+                f'<span class="metric-pill"><strong>Tokens</strong> {rendered["in_tokens"]} in → {rendered["out_tokens"]} out</span>',
+                unsafe_allow_html=True,
+            )
 
     if finished or live_run["stop_requested"]:
         _finalise_run(

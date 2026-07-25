@@ -107,7 +107,7 @@ def test_agent_generate_response_returns_expected_fields(_mock_openai):
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)
 @patch("parrotlm.agents.agent.OpenAI", side_effect=_FakeOpenAIClient)
-def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
+def test_run_simulation_emits_opener_plus_two_entries_for_one_turn(_mock_openai):
     agent_a_config = _agent_config(
         "fake/model-a", "Persona A", user_persona_snapshot="Persona A"
     )
@@ -123,8 +123,13 @@ def test_run_simulation_emits_two_entries_for_one_turn(_mock_openai):
     )
     logs = list(orchestrator.run_simulation(num_turns=1, initial_message="Hi"))
 
-    assert len(logs) == 2
-    assert "content" in logs[0]
+    assert len(logs) == 3
+    # The opening message is attributed to Agent A; Agent B answers first.
+    assert logs[0]["speaker_slot"] == "A"
+    assert logs[0]["content"] == "Hi"
+    assert logs[0]["finish_reason"] == "seeded_opener"
+    assert logs[1]["speaker_slot"] == "B"
+    assert logs[2]["speaker_slot"] == "A"
 
     assert "system_prompt_snapshot" in logs[0]
 
@@ -230,12 +235,24 @@ def test_run_simulation_stops_after_agent_a_refusal(_mock_openai):
         orchestrator.agent_a, "generate_response", return_value=refusal_response
     ):
         with patch.object(
-            orchestrator.agent_b, "generate_response"
+            orchestrator.agent_b,
+            "generate_response",
+            return_value={
+                "content": "mocked reply",
+                "latency_ms": 1.0,
+                "input_tokens": 1,
+                "output_tokens": 1,
+                "finish_reason": "stop",
+                "is_refusal": False,
+            },
         ) as mock_agent_b_generate:
             logs = list(orchestrator.run_simulation(num_turns=3, initial_message="Hi"))
 
-    assert len(logs) == 1
-    mock_agent_b_generate.assert_not_called()
+    # Opener + Agent B's reply + Agent A's refusal, then the run stops.
+    assert len(logs) == 3
+    assert logs[-1]["speaker_slot"] == "A"
+    assert logs[-1]["is_refusal"] is True
+    mock_agent_b_generate.assert_called_once()
 
 
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=False)

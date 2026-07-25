@@ -158,43 +158,62 @@ class Orchestrator:
         """
         if not isinstance(num_turns, int) or num_turns <= 0:
             raise ValueError("`num_turns` must be a positive integer.")
-        last_message = validate_non_empty_string(initial_message, "initial_message")
+        opening_message = validate_non_empty_string(initial_message, "initial_message")
 
         self.log_simulation_start(num_turns)
 
-        total_logs = 0
+        # The opening message is spoken by Agent A. We log it like any other turn and
+        # seed it into both agents' histories, so Agent B actually hears the opener and
+        # answers it — making the exchange read as a real two-party conversation.
+        opener_entry = {
+            "experiment_id": self.experiment_id,
+            "turn_id": 0,
+            "scenario": self.scenario_name,
+            "speaker_slot": "A",
+            "speaker_name": self.agent_a.name,
+            "speaker_model": self.agent_a.model_slug,
+            "responder_model": self.agent_b.model_slug,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "system_prompt_snapshot": self.persona_a_snapshot,
+            "latency_ms": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_preview": "",
+            "content": opening_message,
+            "finish_reason": "seeded_opener",
+            "is_refusal": False,
+        }
+        yield opener_entry
+        total_logs = 1
+        self.agent_a.history.append({"role": "assistant", "content": opening_message})
+        last_message = opening_message
+
+        # Agent B speaks first, answering the opener; agents then alternate.
+        speakers = (
+            (self.agent_b, self.agent_a, self.persona_b_snapshot, self.agent_b_parameters),
+            (self.agent_a, self.agent_b, self.persona_a_snapshot, self.agent_a_parameters),
+        )
         for turn_index in range(num_turns):
-            if cancellation_requested and cancellation_requested():
-                logger.info("Simulation cancelled before turn %s.", turn_index)
-                break
+            for speaker, responder, persona_snapshot, generation_parameters in speakers:
+                if cancellation_requested and cancellation_requested():
+                    logger.info("Simulation cancelled at turn %s.", turn_index)
+                    self.log_simulation_completion(total_logs)
+                    return
 
-            log_entry, last_message, should_stop = self._run_single_agent_turn(
-                turn_index=turn_index,
-                speaker=self.agent_a,
-                responder=self.agent_b,
-                system_prompt_snapshot=self.persona_a_snapshot,
-                input_message=last_message,
-                generation_parameters=self.agent_a_parameters,
-                on_token=on_token,
-            )
-            yield log_entry
-            total_logs += 1
-            if should_stop or (cancellation_requested and cancellation_requested()):
-                break
-
-            log_entry, last_message, should_stop = self._run_single_agent_turn(
-                turn_index=turn_index,
-                speaker=self.agent_b,
-                responder=self.agent_a,
-                system_prompt_snapshot=self.persona_b_snapshot,
-                input_message=last_message,
-                generation_parameters=self.agent_b_parameters,
-                on_token=on_token,
-            )
-            yield log_entry
-            total_logs += 1
-            if should_stop:
-                break
+                log_entry, last_message, should_stop = self._run_single_agent_turn(
+                    turn_index=turn_index,
+                    speaker=speaker,
+                    responder=responder,
+                    system_prompt_snapshot=persona_snapshot,
+                    input_message=last_message,
+                    generation_parameters=generation_parameters,
+                    on_token=on_token,
+                )
+                yield log_entry
+                total_logs += 1
+                if should_stop:
+                    self.log_simulation_completion(total_logs)
+                    return
 
         self.log_simulation_completion(total_logs)
 
