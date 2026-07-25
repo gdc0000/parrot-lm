@@ -27,3 +27,6 @@ Thumbs.db
 
 # Pytest cache
 .pytest_cache/
+
+# Streamlit secrets (never commit credentials)
+.streamlit/secrets.toml

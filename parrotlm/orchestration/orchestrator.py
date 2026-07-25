@@ -140,12 +140,15 @@ class Orchestrator:
         num_turns: int,
         initial_message: str = "Hello.",
         cancellation_requested: Optional[Callable[[], bool]] = None,
+        on_token: Optional[Callable[[str], None]] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """Run a multi-turn conversation and yield log entries as they are created.
 
         Args:
             num_turns: The number of back-and-forth turns to execute.
             initial_message: The starting message for the conversation.
+            cancellation_requested: Optional callback checked between responses.
+            on_token: Optional callback forwarded to the agents for streamed tokens.
 
         Returns:
             A generator that yields structured log dictionaries for each agent's response.
@@ -160,74 +163,65 @@ class Orchestrator:
         self.log_simulation_start(num_turns)
 
         total_logs = 0
-        for log_entry in self.process_conversation_turns(
-            num_turns, last_message, cancellation_requested
-        ):
-            yield log_entry
-            total_logs += 1
-
-        self.log_simulation_completion(total_logs)
-
-    def process_conversation_turns(
-        self,
-        num_turns: int,
-        initial_message: str,
-        cancellation_requested: Optional[Callable[[], bool]] = None,
-    ) -> Generator[Dict[str, Any], None, None]:
-        """Iterate through the specified number of turns, managing handoffs between agents."""
-        last_message = initial_message
         for turn_index in range(num_turns):
             if cancellation_requested and cancellation_requested():
                 logger.info("Simulation cancelled before turn %s.", turn_index)
                 break
 
-            log_entry_a, last_message, should_stop = self._run_single_agent_turn(
+            log_entry, last_message, should_stop = self._run_single_agent_turn(
                 turn_index=turn_index,
                 speaker=self.agent_a,
                 responder=self.agent_b,
                 system_prompt_snapshot=self.persona_a_snapshot,
                 input_message=last_message,
                 generation_parameters=self.agent_a_parameters,
+                on_token=on_token,
             )
-            yield log_entry_a
+            yield log_entry
+            total_logs += 1
             if should_stop or (cancellation_requested and cancellation_requested()):
                 break
 
-            log_entry_b, last_message, should_stop = self._run_single_agent_turn(
+            log_entry, last_message, should_stop = self._run_single_agent_turn(
                 turn_index=turn_index,
                 speaker=self.agent_b,
                 responder=self.agent_a,
                 system_prompt_snapshot=self.persona_b_snapshot,
                 input_message=last_message,
                 generation_parameters=self.agent_b_parameters,
+                on_token=on_token,
             )
-            yield log_entry_b
+            yield log_entry
+            total_logs += 1
             if should_stop:
                 break
 
-    def request_agent_generation(
+        self.log_simulation_completion(total_logs)
+
+    def _run_single_agent_turn(
         self,
+        turn_index: int,
         speaker: Agent,
+        responder: Agent,
+        system_prompt_snapshot: str,
         input_message: str,
         generation_parameters: Dict[str, Any],
-        turn_index: int,
-    ) -> Any:
-        """Ask the speaker agent to generate a response based on the input."""
+        on_token: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[Dict[str, Any], str, bool]:
+        """Generate one speaker response, build its log entry, and return stop status."""
         try:
             logger.info("Turn %s: %s generating response...", turn_index, speaker.name)
-            return speaker.generate_response(input_message, **generation_parameters)
+            response_data = speaker.generate_response(
+                input_message, on_token=on_token, **generation_parameters
+            )
         except Exception as exception:
             logger.exception("Failed turn %s for %s.", turn_index, speaker.name)
             raise RuntimeError(
                 f"{speaker.name} failed on turn {turn_index}."
             ) from exception
 
-    def normalize_agent_payload(
-        self, speaker: Agent, response_data: Any, turn_index: int
-    ) -> Dict[str, Any]:
-        """Validate and normalize the raw response data from the agent."""
         try:
-            return normalize_response_data(response_data)
+            response_data = normalize_response_data(response_data)
         except (KeyError, TypeError, ValueError) as exception:
             logger.exception(
                 "invalid_response_payload | speaker=%s turn_index=%s",
@@ -238,83 +232,8 @@ class Orchestrator:
                 f"{speaker.name} returned an invalid payload on turn {turn_index}."
             ) from exception
 
-    def evaluate_stop_condition(
-        self, turn_index: int, speaker_name: str, is_refusal: bool
-    ) -> bool:
-        """Check if the conversation should stop due to a model refusal."""
-        should_stop = bool(is_refusal)
-        if should_stop:
-            log_structured(
-                logging.WARNING,
-                "agent_refusal_detected",
-                experiment_id=self.experiment_id,
-                turn_index=turn_index,
-                speaker=speaker_name,
-            )
-        return should_stop
-
-    def _run_single_agent_turn(
-        self,
-        turn_index: int,
-        speaker: Agent,
-        responder: Agent,
-        system_prompt_snapshot: str,
-        input_message: str,
-        generation_parameters: Dict[str, Any],
-    ) -> Tuple[Dict[str, Any], str, bool]:
-        """Generate one speaker response, append the log, and return stop status."""
-        response_data = self.request_agent_generation(
-            speaker, input_message, generation_parameters, turn_index
-        )
-        normalized_response_data = self.normalize_agent_payload(
-            speaker, response_data, turn_index
-        )
-
-        log_entry = self._create_log_entry(
-            turn_index=turn_index,
-            speaker=speaker,
-            responder=responder,
-            response_data=normalized_response_data,
-            system_prompt_snapshot=system_prompt_snapshot,
-            input_message=input_message,
-        )
-
-        # We must keep a non-empty handoff message so the next agent receives valid input.
-
-        # Sending a completely blank message to the next agent breaks the strict role alternation
-        # sequence that OpenRouter expects, causing subsequent API requests to fail.
-        next_message = normalized_response_data["content"] or "..."
-        should_stop = self.evaluate_stop_condition(
-            turn_index, speaker.name, normalized_response_data["is_refusal"]
-        )
-
-        return log_entry, next_message, should_stop
-
-    def format_turn_metrics(
-        self, response_data: Dict[str, Any], input_message: str
-    ) -> Dict[str, Any]:
-        """Format the specific metrics from the response data into the log schema."""
-        return {
-            "latency_ms": response_data["latency_ms"],
-            "input_tokens": response_data["input_tokens"],
-            "output_tokens": response_data["output_tokens"],
-            "input_preview": input_message[:120],
-            "content": response_data["content"],
-            "finish_reason": response_data["finish_reason"],
-            "is_refusal": response_data["is_refusal"],
-        }
-
-    def assemble_log_record(
-        self,
-        turn_index: int,
-        speaker: Agent,
-        responder: Agent,
-        system_prompt_snapshot: str,
-        metrics: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Combine all context into a single log record dictionary."""
         speaker_slot = "A" if speaker is self.agent_a else "B"
-        record = {
+        log_entry = {
             "experiment_id": self.experiment_id,
             "turn_id": turn_index,  # keep standard field name for database
             "scenario": self.scenario_name,
@@ -324,21 +243,28 @@ class Orchestrator:
             "responder_model": responder.model_slug,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "system_prompt_snapshot": system_prompt_snapshot,
+            "latency_ms": response_data["latency_ms"],
+            "input_tokens": response_data["input_tokens"],
+            "output_tokens": response_data["output_tokens"],
+            "input_preview": input_message[:120],
+            "content": response_data["content"],
+            "finish_reason": response_data["finish_reason"],
+            "is_refusal": response_data["is_refusal"],
         }
-        record.update(metrics)
-        return record
 
-    def _create_log_entry(
-        self,
-        turn_index: int,
-        speaker: Agent,
-        responder: Agent,
-        response_data: Dict[str, Any],
-        system_prompt_snapshot: str,
-        input_message: str,
-    ) -> Dict[str, Any]:
-        """Create a normalized log dictionary for one model output."""
-        metrics = self.format_turn_metrics(response_data, input_message)
-        return self.assemble_log_record(
-            turn_index, speaker, responder, system_prompt_snapshot, metrics
-        )
+        # We must keep a non-empty handoff message so the next agent receives valid input.
+        # Sending a completely blank message to the next agent breaks the strict role alternation
+        # sequence that OpenRouter expects, causing subsequent API requests to fail.
+        next_message = response_data["content"] or "..."
+
+        should_stop = bool(response_data["is_refusal"])
+        if should_stop:
+            log_structured(
+                logging.WARNING,
+                "agent_refusal_detected",
+                experiment_id=self.experiment_id,
+                turn_index=turn_index,
+                speaker=speaker.name,
+            )
+
+        return log_entry, next_message, should_stop

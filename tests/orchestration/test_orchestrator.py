@@ -25,17 +25,34 @@ def _agent_config(
     )
 
 
+def _fake_stream(
+    content: str, prompt_tokens: int = 10, completion_tokens: int = 5
+):
+    """Build a fake streaming response: one content chunk plus a usage chunk."""
+    return iter(
+        [
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content=content),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=None,
+            ),
+            SimpleNamespace(
+                choices=[],
+                usage=SimpleNamespace(
+                    prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+                ),
+            ),
+        ]
+    )
+
+
 class _FakeCompletions:
     def create(self, model, messages, **kwargs):
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(content="mocked reply"),
-                    finish_reason="stop",
-                )
-            ],
-            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
-        )
+        return _fake_stream("mocked reply")
 
 
 class _FakeOpenAIClient:
@@ -49,15 +66,7 @@ class _RecordingCompletions:
 
     def create(self, model, messages, **kwargs):
         self.calls.append({"model": model, "messages": messages, "kwargs": kwargs})
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(content="mocked reply"),
-                    finish_reason="stop",
-                )
-            ],
-            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
-        )
+        return _fake_stream("mocked reply")
 
 
 class _RecordingOpenAIClient:
@@ -68,15 +77,7 @@ class _RecordingOpenAIClient:
 
 class _EmptyContentCompletions:
     def create(self, model, messages, **kwargs):
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(content="   "),
-                    finish_reason="stop",
-                )
-            ],
-            usage=SimpleNamespace(prompt_tokens=4, completion_tokens=0),
-        )
+        return _fake_stream("   ", prompt_tokens=4, completion_tokens=0)
 
 
 class _EmptyContentOpenAIClient:

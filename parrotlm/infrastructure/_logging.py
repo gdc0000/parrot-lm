@@ -178,14 +178,25 @@ def apply_logging_configuration(level: int) -> None:
     )
 
 
+_is_configured = False
+
+
 def setup_logging(level: int = logging.INFO) -> None:
     """Configure stdout and rotating JSONL file handlers.
+
+    Runs once per process: re-applying dictConfig would replace the root
+    logger's handler list and silently drop handlers installed later (e.g.
+    the Supabase application-log handler added on Streamlit reruns).
 
     Args:
         level: The logging severity level to capture. Defaults to logging.INFO.
     """
+    global _is_configured
+    if _is_configured:
+        return
     ensure_log_directory_exists()
     apply_logging_configuration(level)
+    _is_configured = True
 
 
 def log_structured(level: int, event: str, **context: Any) -> None:

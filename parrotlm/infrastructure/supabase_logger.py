@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import logging
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -173,11 +174,17 @@ def upload_session_logs(logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
 
 
 def make_json_safe(value: Any) -> Any:
-    """Return a JSON-compatible representation for Supabase JSONB columns."""
-    try:
-        return json.loads(json.dumps(value, sort_keys=True, default=str))
-    except (TypeError, ValueError):
-        return str(value)
+    """Return a JSON-compatible representation for Supabase JSONB columns.
+
+    Sanitizes directly instead of round-tripping through json.dumps/json.loads.
+    """
+    if isinstance(value, dict):
+        return {str(key): make_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [make_json_safe(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
 
 
 def format_log_record_for_supabase(record: logging.LogRecord) -> Dict[str, Any]:
@@ -208,6 +215,37 @@ def format_log_record_for_supabase(record: logging.LogRecord) -> Dict[str, Any]:
     }
 
 
+# Single worker keeps uploads ordered and off the caller's thread.
+_UPLOAD_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="supabase-upload"
+)
+_PENDING_UPLOADS: List[Future] = []
+_PENDING_UPLOADS_LOCK = threading.Lock()
+
+
+def submit_table_insert(client: Any, table_name: str, rows: List[Dict[str, Any]]) -> None:
+    """Queue a batch insert on the background uploader (non-blocking)."""
+    future = _UPLOAD_EXECUTOR.submit(execute_table_insert, client, table_name, rows)
+    with _PENDING_UPLOADS_LOCK:
+        _PENDING_UPLOADS.append(future)
+
+
+def wait_for_pending_uploads(timeout: Optional[float] = None) -> None:
+    """Block until all queued Supabase inserts have completed.
+
+    Args:
+        timeout: Maximum seconds to wait per pending upload (None = wait forever).
+    """
+    with _PENDING_UPLOADS_LOCK:
+        pending = list(_PENDING_UPLOADS)
+        _PENDING_UPLOADS.clear()
+    for future in pending:
+        try:
+            future.result(timeout=timeout)
+        except Exception:
+            logger.exception("supabase_upload_task_failed")
+
+
 class SupabaseLogHandler(logging.Handler):
     """Logging handler that buffers application log records into Supabase."""
 
@@ -223,7 +261,7 @@ class SupabaseLogHandler(logging.Handler):
         self.client = client if client is not None else get_supabase_client()
         self.table_name = table_name
         self.buffer: List[Dict[str, Any]] = []
-        self._is_flushing = False
+        self._buffer_lock = threading.Lock()
 
     @property
     def is_available(self) -> bool:
@@ -232,30 +270,31 @@ class SupabaseLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Buffer one log record and upload when the batch size is reached."""
-        if not self.is_available or self._is_flushing:
+        if not self.is_available:
             return
         if record.name.startswith("parrotlm.infrastructure.supabase"):
             return
 
         try:
-            self.buffer.append(format_log_record_for_supabase(record))
+            with self._buffer_lock:
+                self.buffer.append(format_log_record_for_supabase(record))
             if len(self.buffer) >= self.batch_size:
                 self.flush()
         except Exception:
             self.handleError(record)
 
     def flush(self) -> None:
-        """Upload buffered application logs to Supabase."""
-        if not self.buffer or not self.is_available or self._is_flushing:
+        """Snapshot the buffer and queue its upload in the background."""
+        if not self.is_available:
             return
 
-        self._is_flushing = True
-        try:
+        with self._buffer_lock:
+            if not self.buffer:
+                return
             rows = sanitize_application_log_entries(self.buffer)
-            execute_table_insert(self.client, self.table_name, rows)
             self.buffer = []
-        finally:
-            self._is_flushing = False
+
+        submit_table_insert(self.client, self.table_name, rows)
 
 
 def install_supabase_log_handler(
@@ -284,10 +323,11 @@ def install_supabase_log_handler(
 
 
 def flush_supabase_log_handlers() -> None:
-    """Flush all installed Supabase application-log handlers."""
+    """Flush all installed Supabase application-log handlers and drain uploads."""
     for handler in logging.getLogger().handlers:
         if isinstance(handler, SupabaseLogHandler):
             handler.flush()
+    wait_for_pending_uploads()
 
 
 class SupabaseBufferedLogger:
@@ -306,6 +346,7 @@ class SupabaseBufferedLogger:
         """
         self.batch_size = max(1, batch_size)
         self.buffer: List[Dict[str, Any]] = []
+        self._buffer_lock = threading.Lock()
         self.is_available, self.client, self.error_message = (
             verify_client_availability()
         )
@@ -315,15 +356,20 @@ class SupabaseBufferedLogger:
         if not self.is_available:
             return
 
-        self.buffer.append(log_entry)
+        with self._buffer_lock:
+            self.buffer.append(log_entry)
         if len(self.buffer) >= self.batch_size:
             self.flush()
 
     def flush(self) -> None:
-        """Upload all currently buffered generated rows to Supabase."""
-        if not self.buffer or not self.is_available:
+        """Snapshot the buffer and queue its upload in the background."""
+        if not self.is_available:
             return
 
-        cleaned_entries = sanitize_log_entries(self.buffer)
-        execute_batch_insert(self.client, cleaned_entries)
-        self.buffer = []
+        with self._buffer_lock:
+            if not self.buffer:
+                return
+            cleaned_entries = sanitize_log_entries(self.buffer)
+            self.buffer = []
+
+        submit_table_insert(self.client, SESSION_LOGS_TABLE_NAME, cleaned_entries)

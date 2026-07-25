@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -15,10 +16,60 @@ _client: Optional[object] = None
 _is_initialized = False
 
 
+def _read_streamlit_secret(name: str) -> str:
+    """Read a value from Streamlit's secrets.toml, if running under Streamlit.
+
+    Returns an empty string when Streamlit is unavailable, no secrets file
+    exists, or the key is missing.
+    """
+    try:
+        import streamlit as st
+
+        return str(st.secrets.get(name, "")).strip()
+    except Exception:
+        return ""
+
+
+def _read_secrets_file(name: str) -> str:
+    """Read a top-level string value from ./.streamlit/secrets.toml directly.
+
+    This lets the same secrets.toml used on Streamlit Cloud work on localhost
+    without depending on the Streamlit runtime. Uses tomllib when available
+    (Python >= 3.11) and falls back to a flat `KEY = "value"` line parse.
+    """
+    secrets_path = os.path.join(os.getcwd(), ".streamlit", "secrets.toml")
+    if not os.path.isfile(secrets_path):
+        return ""
+
+    try:
+        try:
+            import tomllib
+
+            with open(secrets_path, "rb") as handle:
+                data = tomllib.load(handle)
+            value = data.get(name, "")
+            return str(value).strip() if isinstance(value, str) else ""
+        except ImportError:
+            pass
+
+        pattern = re.compile(
+            rf'^\s*{re.escape(name)}\s*=\s*["\']([^"\']*)["\']',
+            re.MULTILINE,
+        )
+        with open(secrets_path, "r", encoding="utf-8") as handle:
+            match = pattern.search(handle.read())
+        return match.group(1).strip() if match else ""
+    except Exception:
+        return ""
+
+
 def resolve_supabase_credentials(
     provided_url: Optional[str], provided_key: Optional[str]
 ) -> Tuple[str, str]:
     """Resolve the final Supabase URL and key to use.
+
+    Resolution order: explicitly provided values, then environment variables
+    (.env), then Streamlit secrets (runtime), then ./.streamlit/secrets.toml.
 
     Args:
         provided_url: An optional URL provided directly by the caller.
@@ -29,6 +80,14 @@ def resolve_supabase_credentials(
     """
     effective_url = provided_url or os.getenv("SUPABASE_URL", "").strip()
     effective_key = provided_key or os.getenv("SUPABASE_ANON_KEY", "").strip()
+    if not effective_url:
+        effective_url = _read_streamlit_secret("SUPABASE_URL")
+    if not effective_key:
+        effective_key = _read_streamlit_secret("SUPABASE_ANON_KEY")
+    if not effective_url:
+        effective_url = _read_secrets_file("SUPABASE_URL")
+    if not effective_key:
+        effective_key = _read_secrets_file("SUPABASE_ANON_KEY")
     return effective_url, effective_key
 
 
@@ -88,6 +147,9 @@ def get_supabase_client(
                 "supabase_credentials_missing | "
                 "Set SUPABASE_URL and SUPABASE_ANON_KEY in your .env file to enable cloud logging."
             )
+            # Cache the miss so subsequent callers don't re-warn. The cached-None
+            # early return above serves all later calls until reset_client().
+            _is_initialized = True
         return None
 
     return instantiate_supabase_client(effective_url, effective_key)

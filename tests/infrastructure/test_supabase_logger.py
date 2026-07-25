@@ -143,6 +143,7 @@ class TestSupabaseLogHandler:
         mock_table.insert.assert_not_called()
 
         handler.handle(record_2)
+        supabase_logger.wait_for_pending_uploads()
 
         mock_client.table.assert_called_once_with("application_logs")
         inserted_rows = mock_table.insert.call_args[0][0]
@@ -214,6 +215,7 @@ class TestSupabaseBufferedLogger:
 
         # Second push - should upload
         logger.push({"turn_id": 1, "content": "second"})
+        supabase_logger.wait_for_pending_uploads()
         mock_table.insert.assert_called_once()
         assert len(logger.buffer) == 0
 
@@ -233,5 +235,40 @@ class TestSupabaseBufferedLogger:
         mock_table.insert.assert_not_called()
 
         logger.flush()
+        supabase_logger.wait_for_pending_uploads()
         mock_table.insert.assert_called_once()
         assert len(logger.buffer) == 0
+
+
+class TestMakeJsonSafe:
+    """Unit tests for the direct make_json_safe sanitizer."""
+
+    def test_primitives_pass_through(self):
+        assert supabase_logger.make_json_safe("text") == "text"
+        assert supabase_logger.make_json_safe(3) == 3
+        assert supabase_logger.make_json_safe(1.5) == 1.5
+        assert supabase_logger.make_json_safe(True) is True
+        assert supabase_logger.make_json_safe(None) is None
+
+    def test_nested_structures_are_sanitized_recursively(self):
+        value = {
+            "tuple": (1, 2),
+            "nested": {"list": [1, {"deep": "x"}]},
+            7: "non-string key",
+        }
+        result = supabase_logger.make_json_safe(value)
+        assert result == {
+            "tuple": [1, 2],
+            "nested": {"list": [1, {"deep": "x"}]},
+            "7": "non-string key",
+        }
+
+    def test_non_serializable_objects_fall_back_to_str(self):
+        class Weird:
+            def __str__(self):
+                return "weird-instance"
+
+        assert supabase_logger.make_json_safe(Weird()) == "weird-instance"
+        assert supabase_logger.make_json_safe({"obj": Weird()}) == {
+            "obj": "weird-instance"
+        }

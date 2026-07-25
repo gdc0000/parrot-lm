@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from openai import OpenAI
-from openai.types.chat import ChatCompletion
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from parrotlm.infrastructure._logging import is_retryable_exception, log_structured
@@ -102,17 +101,41 @@ class Agent:
         user_text = validate_non_empty_string(input_text, "input_text")
         self.history.append({"role": "user", "content": user_text})
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(is_retryable_exception),
+        reraise=True,
+    )
+    def _create_completion_stream(
+        self, messages: List[Dict[str, str]], keyword_arguments: Dict[str, Any]
+    ) -> Iterable[Any]:
+        """Open a streaming completion request, retrying transient request-time errors.
+
+        Only the stream *creation* is retried: once tokens have been emitted to the
+        consumer, retrying a partially streamed response would duplicate text.
+        """
+        # We ignore type checking here because the openai library typings
+        # require precise TypedDicts, but we're constructing dynamic dictionaries.
+        return self.client.chat.completions.create(
+            model=self.model_slug,
+            messages=messages,  # type: ignore
+            stream=True,
+            stream_options={"include_usage": True},
+            **keyword_arguments,
+        )
+
     def execute_api_request(
         self, messages: List[Dict[str, str]], keyword_arguments: Dict[str, Any]
-    ) -> Tuple[ChatCompletion, float]:
-        """Send the formatted messages to the LLM API and measure latency.
+    ) -> Iterable[Any]:
+        """Open a streaming request to the LLM API.
 
         Args:
             messages: The list of formatted message dictionaries.
             keyword_arguments: Additional arguments like temperature or max_tokens.
 
         Returns:
-            A tuple containing the raw API response object and the latency in milliseconds.
+            The raw streaming response iterator.
 
         Raises:
             Exception: If the API request fails due to network or authentication issues.
@@ -127,15 +150,8 @@ class Agent:
             roles_sent=[message.get("role", "unknown") for message in messages[1:]],
         )
 
-        start_time = time.time()
         try:
-            # We ignore type checking here because the openai library typings
-            # require precise TypedDicts, but we're constructing dynamic dictionaries.
-            response = self.client.chat.completions.create(
-                model=self.model_slug,
-                messages=messages,  # type: ignore
-                **keyword_arguments,
-            )
+            return self._create_completion_stream(messages, keyword_arguments)
         except Exception:
             logger.exception(
                 "OpenRouter request failed for agent=%s model=%s.",
@@ -144,43 +160,40 @@ class Agent:
             )
             raise
 
-        latency_ms = (time.time() - start_time) * 1000
-        return response, latency_ms
-
-    def extract_response_metrics(
-        self, response: Any, latency_ms: float
-    ) -> Dict[str, Any]:
-        """Extract content, usage, and termination reasons from the raw API response.
+    def _consume_stream(
+        self,
+        stream: Iterable[Any],
+        on_token: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[str, str, Any]:
+        """Accumulate streamed chunks into content, finish reason, and usage.
 
         Args:
-            response: The raw API response object.
-            latency_ms: The recorded latency in milliseconds.
+            stream: The streaming response iterator.
+            on_token: Optional callback invoked with each content chunk as it arrives.
 
         Returns:
-            A dictionary containing the parsed metrics.
-
-        Raises:
-            RuntimeError: If the response lacks required fields like choices.
+            A tuple of (content, finish_reason, usage) where usage may be None.
         """
-        choices = getattr(response, "choices", None) or []
-        if not choices or not getattr(choices[0], "message", None):
-            raise RuntimeError("Model response is missing message choices.")
+        content_parts: List[str] = []
+        finish_reason = "unknown"
+        usage = None
 
-        content = (choices[0].message.content or "").strip()
-        finish_reason = choices[0].finish_reason or "unknown"
-        usage = getattr(response, "usage", None)
-        input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-        output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-        is_refusal = not content or finish_reason == "content_filter"
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None) or []
+            if choices:
+                delta = getattr(choices[0], "delta", None)
+                piece = getattr(delta, "content", None) if delta else None
+                if piece:
+                    content_parts.append(piece)
+                    if on_token is not None:
+                        on_token(piece)
+                if choices[0].finish_reason:
+                    finish_reason = choices[0].finish_reason
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                usage = chunk_usage
 
-        return {
-            "content": content,
-            "latency_ms": latency_ms,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "finish_reason": finish_reason,
-            "is_refusal": is_refusal,
-        }
+        return "".join(content_parts).strip(), finish_reason, usage
 
     def update_conversation_history(self, content: str) -> None:
         """Append the assistant's reply (if any) and prune history to window limits.
@@ -194,30 +207,50 @@ class Agent:
         else:
             self._prune_history()
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(is_retryable_exception),
-        reraise=True,
-    )
     def generate_response(
-        self, input_text: str, **keyword_arguments: Any
+        self,
+        input_text: str,
+        on_token: Optional[Callable[[str], None]] = None,
+        **keyword_arguments: Any,
     ) -> Dict[str, Any]:
-        """Generate one response from the model and return normalized metadata.
+        """Generate one streamed response from the model and return normalized metadata.
 
         Args:
             input_text: The incoming message text.
+            on_token: Optional callback invoked with each token chunk as it streams in.
             **keyword_arguments: Additional parameters for the generation API (e.g. max_tokens).
 
         Returns:
             A dictionary of parsed metrics including content, tokens, and finish reason.
+
+        Note:
+            Mid-stream failures are not retried: retrying after tokens have already
+            been emitted would duplicate text for streaming consumers.
         """
         self.append_user_message(input_text)
         messages = self._build_request_messages()
 
-        response, latency_ms = self.execute_api_request(messages, keyword_arguments)
-        metrics = self.extract_response_metrics(response, latency_ms)
+        start_time = time.time()
+        stream = self.execute_api_request(messages, keyword_arguments)
+        content, finish_reason, usage = self._consume_stream(stream, on_token)
+        latency_ms = (time.time() - start_time) * 1000
 
-        self.update_conversation_history(metrics["content"])
+        if usage is None:
+            logger.warning(
+                "Provider returned no usage data for agent=%s model=%s; recording 0 tokens.",
+                self.name,
+                self.model_slug,
+            )
+
+        metrics = {
+            "content": content,
+            "latency_ms": latency_ms,
+            "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0,
+            "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0,
+            "finish_reason": finish_reason,
+            "is_refusal": not content or finish_reason == "content_filter",
+        }
+
+        self.update_conversation_history(content)
 
         return metrics

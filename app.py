@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import logging
-import queue
-import threading
 import time
-import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import streamlit as st
 from parrotlm.infrastructure._logging import setup_logging
-from parrotlm.infrastructure.supabase_client import get_supabase_client
+from parrotlm.infrastructure.supabase_client import (
+    get_supabase_client,
+    resolve_supabase_credentials,
+)
 from parrotlm.infrastructure.supabase_logger import (
     SupabaseBufferedLogger,
     flush_supabase_log_handlers,
@@ -39,43 +39,8 @@ AGENT_COLORS = {"A": "#4A90D9", "B": "#D94A7B"}
 # a file path and raises "Error opening 'A'" — so use emoji avatars instead.
 AGENT_AVATARS = {"A": "🅰️", "B": "🅱️"}
 
-# Sentinel pushed onto the run queue when the background worker finishes.
-# It must be a plain string (not a module-level `object()`) because each
-# Streamlit rerun re-executes this module — a fresh `object()` would get a new
-# identity every rerun, so the draining loop's `is` check would never match the
-# object the still-running worker captured.
-_RUN_DONE = "__parrotlm_run_done__"
-
-
-def _simulation_worker(
-    orchestrator: Orchestrator,
-    num_turns: int,
-    initial_message: str,
-    out_queue: "queue.Queue[Any]",
-    stop_event: threading.Event,
-    session_logger: SupabaseBufferedLogger,
-) -> None:
-    """Run the generator in a background thread, draining entries onto a queue.
-
-    The orchestrator's `cancellation_requested` callback reads `stop_event`,
-    so the main UI thread can interrupt the run before the next agent turn by
-    setting the event. Each yielded log entry is also pushed to Supabase.
-    """
-    try:
-        for log_entry in orchestrator.run_simulation(
-            num_turns=num_turns,
-            initial_message=initial_message,
-            cancellation_requested=stop_event.is_set,
-        ):
-            out_queue.put(log_entry)
-            # Stream this turn to Supabase's session_logs table.
-            session_logger.push(log_entry)
-    except Exception as exception:  # noqa: BLE001  (surfaced to UI via queue)
-        out_queue.put(exception)
-    finally:
-        session_logger.flush()
-        flush_supabase_log_handlers()
-        out_queue.put(_RUN_DONE)
+# Minimum interval between in-place placeholder updates while streaming.
+_STREAM_UPDATE_INTERVAL_S = 0.1
 
 
 st.set_page_config(page_title="ParrotLM", page_icon="🦜", layout="wide")
@@ -96,10 +61,8 @@ with st.sidebar:
         key="openrouter_api_key",
     )
 
-    if (
-        os.getenv("SUPABASE_URL", "").strip()
-        and os.getenv("SUPABASE_ANON_KEY", "").strip()
-    ):
+    _supabase_url, _supabase_key = resolve_supabase_credentials(None, None)
+    if _supabase_url and _supabase_key:
         st.caption("☁️ Cloud logging active (Supabase)")
     else:
         st.caption("⚪ Cloud logging off")
@@ -203,16 +166,17 @@ with col_b:
 st.divider()
 
 # --- Run Simulation ---
-# `st.session_state["run"]` holds the live background run, if any:
-#   {thread, queue, stop_event, num_turns, initial_message, cloud_enabled,
-#    session_rows_pushed, totals, run_id}
+# Top-down model: one rerun = one agent response.
+# `st.session_state["run"]` holds the live run, if any:
+#   {generator, stop_requested, num_turns, initial_message, cloud_enabled,
+#    session_logger, session_rows_pushed, totals, experiment_id, models}
 # `st.session_state["conversation_log"]` is the single source of truth for
 # already-rendered messages (survives reruns).
 # `st.session_state["summary"]` is shown once a run finishes.
 
 
 def _render_entry(entry: Dict[str, Any]) -> None:
-    """Render one conversation entry as a chat bubble."""
+    """Render one completed conversation entry as a chat bubble."""
     with st.chat_message("assistant", avatar=AGENT_AVATARS[entry["slot"]]):
         st.markdown(f"**Agent {entry['slot']}** · `{entry['model']}`")
         st.markdown(entry["content"])
@@ -227,12 +191,13 @@ def _render_entry(entry: Dict[str, Any]) -> None:
 def _finalise_run(
     run: Dict[str, Any], *, interrupted: bool = False, error: str | None = None
 ) -> None:
-    """Convert the live run into a persisted summary and clear the live handle."""
+    """Flush logging, convert the live run into a summary, and clear the handle."""
+    run["session_logger"].flush()
+    flush_supabase_log_handlers()
+
     totals = run["totals"]
     turn_count = totals["count"]
     avg_latency = totals["latency_ms"] / turn_count if turn_count else 0
-    label = "⛔ Simulation stopped" if interrupted else "✅ Simulation complete"
-    state = "error" if interrupted else "complete"
 
     summary = (
         f"**{'Interrupted' if interrupted else 'Simulation complete'}** "
@@ -256,15 +221,11 @@ def _finalise_run(
     # Remember the experiment_id so the Supabase panel can highlight its rows.
     st.session_state["last_experiment_id"] = run["experiment_id"]
     st.session_state.pop("run", None)
-    # Replace the status widget that was created during the run.
-    if "status_widget" in st.session_state:
-        st.session_state["status_widget"].update(label=label, state=state)
-        st.session_state.pop("status_widget", None)
 
 
 # --- Run / Stop buttons ---
 live_run = st.session_state.get("run")
-is_running = bool(live_run and live_run["thread"].is_alive())
+is_running = live_run is not None
 
 col_run, col_stop = st.columns([1, 1])
 with col_run:
@@ -304,33 +265,17 @@ if st.session_state["last_run_signature"] != signature and not is_running:
     st.session_state["last_run_signature"] = signature
 
 # --- Stop button handler ---
+# Same granularity as before: the current response finishes, the run stops
+# before the next one starts.
 if stop_clicked and live_run:
-    live_run["stop_event"].set()
+    live_run["stop_requested"] = True
     st.toast("Stopping after the current turn…")
-    st.rerun()
-
-# --- Re-render any already-collected messages ---
-conversation_log: list[Dict[str, Any]] = st.session_state.get("conversation_log", [])
-
-# Show the initial user message if a run has happened or is in progress.
-if conversation_log or is_running or run_clicked:
-    initial_for_display = live_run["initial_message"] if live_run else initial_message
-    with st.chat_message("user"):
-        st.markdown(initial_for_display)
-
-for entry in conversation_log:
-    _render_entry(entry)
-
-if "summary" in st.session_state and not is_running:
-    st.divider()
-    st.success(st.session_state["summary"])
 
 # --- Kick off a new run ---
 if run_clicked and not is_running:
     # Fresh run: reset persisted state.
     st.session_state["conversation_log"] = []
     st.session_state.pop("summary", None)
-    conversation_log = []
 
     agent_a_config = AgentConfig(
         model=model_a,
@@ -357,133 +302,143 @@ if run_clicked and not is_running:
     supabase_client = get_supabase_client()
     install_supabase_log_handler(batch_size=10, client=supabase_client)
     session_logger = SupabaseBufferedLogger(batch_size=10)
-    cloud_enabled = session_logger.is_available
 
-    out_queue: "queue.Queue[Any]" = queue.Queue()
-    stop_event = threading.Event()
-    worker = threading.Thread(
-        target=_simulation_worker,
-        args=(
-            orchestrator,
-            num_turns,
-            initial_message,
-            out_queue,
-            stop_event,
-            session_logger,
-        ),
-        daemon=True,
-    )
-    st.session_state["run"] = {
-        "thread": worker,
-        "queue": out_queue,
-        "stop_event": stop_event,
+    run_state: Dict[str, Any] = {
+        "stop_requested": False,
         "num_turns": num_turns,
         "initial_message": initial_message,
-        "cloud_enabled": cloud_enabled,
+        "cloud_enabled": session_logger.is_available,
+        "session_logger": session_logger,
         "session_rows_pushed": 0,
         "experiment_id": orchestrator.experiment_id,
+        "models": {"A": model_a, "B": model_b},
         "totals": {
             "input_tokens": 0,
             "output_tokens": 0,
             "latency_ms": 0.0,
             "count": 0,
         },
-        "run_id": uuid.uuid4().hex,
     }
-    worker.start()
+    # The token callback is bound per rerun (it writes into that rerun's
+    # placeholder), so route it through a mutable holder on the run state.
+    def _dispatch_token(piece: str) -> None:
+        callback = run_state.get("token_callback")
+        if callback is not None:
+            callback(piece)
+
+    run_state["generator"] = orchestrator.run_simulation(
+        num_turns=num_turns,
+        initial_message=initial_message,
+        cancellation_requested=lambda: run_state["stop_requested"],
+        on_token=_dispatch_token,
+    )
+    st.session_state["run"] = run_state
     st.rerun()
 
-# --- Drain the live run queue and render new messages incrementally ---
+# --- Re-render any already-collected messages ---
+conversation_log: List[Dict[str, Any]] = st.session_state.get("conversation_log", [])
+
+# Show the initial user message if a run has happened or is in progress.
+if conversation_log or is_running:
+    initial_for_display = live_run["initial_message"] if live_run else initial_message
+    with st.chat_message("user"):
+        st.markdown(initial_for_display)
+
+for entry in conversation_log:
+    _render_entry(entry)
+
+if "summary" in st.session_state and not is_running:
+    st.divider()
+    st.success(st.session_state["summary"])
+
+# --- Advance the live run by exactly one agent response ---
 if live_run:
-    status = st.status("Running simulation…", expanded=True)
-    st.session_state["status_widget"] = status
     totals = live_run["totals"]
+    # Responses strictly alternate A, B, A, B…
+    slot = "A" if totals["count"] % 2 == 0 else "B"
 
-    interrupted = False
+    status_label = (
+        f"▶ Running… {totals['count']} of {live_run['num_turns'] * 2} messages "
+        f"(turn {(totals['count'] + 1) // 2}/{live_run['num_turns']})"
+    )
+    if live_run["stop_requested"]:
+        status_label = (
+            f"⛔ Stopping… {totals['count']} messages so far "
+            f"(finishing current response)"
+        )
+
+    st.status(status_label, expanded=False)
+    message_container = st.chat_message("assistant", avatar=AGENT_AVATARS[slot])
+    with message_container:
+        st.markdown(f"**Agent {slot}** · `{live_run['models'][slot]}`")
+        placeholder = st.empty()
+
+        streamed_parts: List[str] = []
+        last_render = [0.0]
+
+        def on_token(piece: str) -> None:
+            """Update the placeholder in real time (throttled, with cursor)."""
+            streamed_parts.append(piece)
+            now = time.time()
+            if now - last_render[0] >= _STREAM_UPDATE_INTERVAL_S:
+                last_render[0] = now
+                placeholder.markdown("".join(streamed_parts) + "▌")
+
+    live_run["token_callback"] = on_token
     error_message: str | None = None
+    log_entry: Dict[str, Any] | None = None
     finished = False
-
-    # Drain everything currently in the queue without blocking the UI long.
-    while True:
-        try:
-            item = live_run["queue"].get_nowait()
-        except queue.Empty:
-            break
-        if item == _RUN_DONE:
+    try:
+        log_entry = next(live_run["generator"], None)
+        if log_entry is None:
             finished = True
-            break
-        if isinstance(item, Exception):
-            error_message = str(item).replace(openrouter_key, "[redacted]")
-            finished = True
-            break
+    except StopIteration:
+        finished = True
+    except Exception as exception:  # noqa: BLE001  (surfaced to UI)
+        error_message = str(exception).replace(openrouter_key, "[redacted]")
+        finished = True
 
-        entry: Dict[str, Any] = item
-        totals["input_tokens"] += entry["input_tokens"]
-        totals["output_tokens"] += entry["output_tokens"]
-        totals["latency_ms"] += entry["latency_ms"]
+    # Final in-place render of the full response (no cursor).
+    final_content = (
+        log_entry["content"] if log_entry else "".join(streamed_parts).strip()
+    )
+    placeholder.markdown(final_content or "…")
+
+    if log_entry is not None:
+        totals["input_tokens"] += log_entry["input_tokens"]
+        totals["output_tokens"] += log_entry["output_tokens"]
+        totals["latency_ms"] += log_entry["latency_ms"]
         totals["count"] += 1
         if live_run["cloud_enabled"]:
+            live_run["session_logger"].push(log_entry)
             live_run["session_rows_pushed"] += 1
 
         rendered = {
-            "slot": entry["speaker_slot"],
-            "model": entry["speaker_model"],
-            "content": entry["content"],
-            "turn": entry["turn_id"] + 1,
+            "slot": log_entry["speaker_slot"],
+            "model": log_entry["speaker_model"],
+            "content": log_entry["content"],
+            "turn": log_entry["turn_id"] + 1,
             "num_turns": live_run["num_turns"],
-            "latency": entry["latency_ms"],
-            "in_tokens": entry["input_tokens"],
-            "out_tokens": entry["output_tokens"],
+            "latency": log_entry["latency_ms"],
+            "in_tokens": log_entry["input_tokens"],
+            "out_tokens": log_entry["output_tokens"],
         }
         conversation_log.append(rendered)
-        _render_entry(rendered)
         st.session_state["conversation_log"] = conversation_log
 
-    # Guard: if the worker thread died without pushing the sentinel (e.g.
-    # an interpreter-level crash), finalise anyway so the UI doesn't loop forever.
-    if not finished and not live_run["thread"].is_alive():
-        # Drain any straggler items first.
-        while True:
-            try:
-                item = live_run["queue"].get_nowait()
-            except queue.Empty:
-                break
-            if item == _RUN_DONE:
-                finished = True
-                break
-            if isinstance(item, Exception):
-                error_message = str(item).replace(openrouter_key, "[redacted]")
-                finished = True
-                break
-            # (real log entries are already handled above; skip stragglers safely)
-        if not finished:
-            finished = True
-            if not error_message:
-                error_message = "Worker thread exited unexpectedly."
+        with message_container:
+            with st.status("Metrics", expanded=False):
+                st.markdown(
+                    f"**Turn** {rendered['turn']}/{rendered['num_turns']}  \n"
+                    f"**Latency** {rendered['latency']:.0f}ms  \n"
+                    f"**Tokens** {rendered['in_tokens']} in → "
+                    f"{rendered['out_tokens']} out"
+                )
 
-    # Update the status label.
-    if live_run["stop_event"].is_set() and not finished:
-        status.update(
-            label=f"⛔ Stopping… {totals['count']} messages so far "
-            f"(finishing current turn)",
-        )
-    elif not finished:
-        status.update(
-            label=f"▶ Running… {totals['count']} of "
-            f"{live_run['num_turns'] * 2} messages "
-            f"(turn {(totals['count'] + 1) // 2}/{live_run['num_turns']})",
-        )
-
-    if finished:
-        interrupted = bool(live_run["stop_event"].is_set())
+    if finished or live_run["stop_requested"]:
         _finalise_run(
             live_run,
-            interrupted=interrupted,
+            interrupted=bool(live_run["stop_requested"]),
             error=error_message,
         )
-        st.rerun()
-    else:
-        # Keep the UI responsive: poll again shortly so new messages render
-        # as soon as they arrive and the Stop button stays clickable.
-        time.sleep(0.5)
-        st.rerun()
+    st.rerun()
