@@ -61,33 +61,28 @@ class Agent:
             api_key=api_key,
         )
 
-    def _build_request_messages(self) -> List[Dict[str, str]]:
-        """Build a bounded, role-aligned message list for the next API request."""
-        maximum_messages = self.max_history_turns * 2
-        relevant_history = self.history[1:]
-        if len(relevant_history) > maximum_messages:
-            relevant_history = relevant_history[-maximum_messages:]
+    def _bounded_history(self) -> List[Dict[str, str]]:
+        """Return the non-system history trimmed to the window and role-aligned.
 
-        # OpenRouter's API often strictly enforces alternating user/assistant messages.
-        # If our history slice happens to start with an assistant message, we drop it
-        # so the model sees a valid user-led exchange sequence (plus the current user
-        # message at the end).
+        OpenRouter's API often strictly enforces alternating user/assistant messages.
+        If the trimmed slice happens to start with an assistant message, we drop it
+        so the model sees a valid user-led exchange sequence (plus the current user
+        message at the end).
+        """
+        relevant_history = self.history[1:][-self.max_history_turns * 2 :]
         if relevant_history and relevant_history[0].get("role") == "assistant":
             relevant_history = relevant_history[1:]
+        return relevant_history
 
-        return [{"role": "system", "content": self.system_prompt}] + relevant_history
+    def _build_request_messages(self) -> List[Dict[str, str]]:
+        """Build a bounded, role-aligned message list for the next API request."""
+        return [
+            {"role": "system", "content": self.system_prompt}
+        ] + self._bounded_history()
 
     def _prune_history(self) -> None:
         """Keep local history bounded and role-aligned to match the configured window."""
-        maximum_messages = self.max_history_turns * 2
-        relevant_history = self.history[1:]
-        if len(relevant_history) <= maximum_messages:
-            return
-
-        relevant_history = relevant_history[-maximum_messages:]
-        if relevant_history and relevant_history[0].get("role") == "assistant":
-            relevant_history = relevant_history[1:]
-        self.history = [self.history[0]] + relevant_history
+        self.history = [self.history[0]] + self._bounded_history()
 
     def append_user_message(self, input_text: str) -> None:
         """Validate and append the user's input to the conversation history.
